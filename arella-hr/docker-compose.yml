@@ -49,6 +49,10 @@ services:
     build:
       context: ./frontend
       target: dev
+    environment:
+      # Vite dev proxy target — inside this container the backend is the
+      # compose service "backend", not localhost (see frontend/vite.config.ts).
+      API_PROXY_TARGET: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
