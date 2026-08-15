@@ -1,0 +1,87 @@
+# Arella HR — Docker Compose
+#
+#   Dev (default):   docker compose up --build
+#   + pgAdmin:       docker compose --profile tools up --build
+#   Production:      docker compose --profile prod up --build
+#
+#   After the first start (and after any new migration):
+#     docker compose exec backend alembic upgrade head
+#
+# All secrets/ports are overridable via a .env file next to this compose
+# file (never commit real values — the defaults below are dev-only):
+#
+#   POSTGRES_PASSWORD, SECRET_KEY, SEED_ADMIN_PASSWORD, PGADMIN_PASSWORD, …
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-arellahr}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-arellahr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-arellahr}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
+      DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Vite dev server with hot reload. The source is bind-mounted; the image's
+  # node_modules are preserved via the named volume.
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+  # Production frontend: nginx serving the Vite build, proxying /api to the
+  # backend (single browser origin — no CORS). Exposed on :3000 by default.
+  frontend-prod:
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      target: prod
+    ports:
+      - "${FRONTEND_PROD_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+  pgadmin:
+    profiles: ["tools"]
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      SERVER_MODE: "true"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  frontend_node_modules:

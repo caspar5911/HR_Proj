@@ -1,0 +1,151 @@
+"""Tests for the /auth endpoints: login, refresh, me, logout + rate limiting."""
+
+from datetime import timedelta
+
+from app.middleware.auth import create_access_token
+from conftest import API, TEST_PASSWORD, auth_headers, login, seed_user
+
+
+# ── login ───────────────────────────────────────────────────────────────────
+
+
+async def test_login_success(client, db):
+    await seed_user(db, email="user@test.com")
+    resp = await client.post(
+        f"{API}/auth/login", json={"email": "user@test.com", "password": TEST_PASSWORD}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+    assert body["refresh_token"]
+
+
+async def test_login_invalid_password(client, db):
+    await seed_user(db, email="user@test.com")
+    resp = await client.post(
+        f"{API}/auth/login", json={"email": "user@test.com", "password": "wrong-password"}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_login_unknown_user(client, db):
+    resp = await client.post(
+        f"{API}/auth/login", json={"email": "ghost@test.com", "password": TEST_PASSWORD}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_login_deactivated_account(client, db):
+    await seed_user(db, email="off@test.com", is_active=False)
+    resp = await client.post(
+        f"{API}/auth/login", json={"email": "off@test.com", "password": TEST_PASSWORD}
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "FORBIDDEN"
+
+
+async def test_login_missing_field_is_validation_error(client, db):
+    resp = await client.post(f"{API}/auth/login", json={"email": "user@test.com"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "VALIDATION_ERROR"
+
+
+# ── refresh ─────────────────────────────────────────────────────────────────
+
+
+# NOTE: the endpoint declares ``refresh_token: str`` (a bare scalar), so
+# FastAPI exposes it as a REQUIRED QUERY PARAMETER, not a JSON body.
+# (Sending a refresh JWT in the query string is a security smell — it lands
+# in access logs / proxy history. If the API is ever changed to accept the
+# token in the body, update these tests.)
+
+
+async def test_refresh_returns_new_token_pair(client, db):
+    await seed_user(db, email="user@test.com")
+    tokens = await login(client, "user@test.com")
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["token_type"] == "bearer"
+
+
+async def test_refresh_rejects_access_token(client, db):
+    await seed_user(db, email="user@test.com")
+    tokens = await login(client, "user@test.com")
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["access_token"]})
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_refresh_rejects_garbage_token(client, db):
+    await seed_user(db, email="user@test.com")
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": "not-a-jwt"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+# ── me ──────────────────────────────────────────────────────────────────────
+
+
+async def test_me_returns_current_user(client, db):
+    await seed_user(db, email="me@test.com", role="manager")
+    token = (await login(client, "me@test.com"))["access_token"]
+    resp = await client.get(f"{API}/auth/me", headers=auth_headers(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["email"] == "me@test.com"
+    assert body["role"] == "manager"
+
+
+async def test_me_requires_authentication(client, db):
+    resp = await client.get(f"{API}/auth/me")
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_me_rejects_expired_token(client, db):
+    user = await seed_user(db, email="me@test.com")
+    token = create_access_token(
+        {"sub": str(user.id), "role": user.role}, expires_delta=timedelta(seconds=-10)
+    )
+    resp = await client.get(f"{API}/auth/me", headers=auth_headers(token))
+    assert resp.status_code == 401
+
+
+# ── logout ──────────────────────────────────────────────────────────────────
+
+
+async def test_logout_acknowledges(client, db):
+    resp = await client.post(f"{API}/auth/logout")
+    assert resp.status_code == 200
+    assert "message" in resp.json()
+
+
+# ── rate limiting ───────────────────────────────────────────────────────────
+
+
+async def test_login_rate_limit_blocks_after_10_attempts(client, db):
+    await seed_user(db, email="user@test.com")
+    payload = {"email": "user@test.com", "password": TEST_PASSWORD}
+    for _ in range(10):
+        resp = await client.post(f"{API}/auth/login", json=payload)
+        assert resp.status_code == 200
+    resp = await client.post(f"{API}/auth/login", json=payload)
+    assert resp.status_code == 429
+    assert resp.json()["detail"]["code"] == "RATE_LIMITED"
+
+
+async def test_refresh_rate_limit_blocks_after_20_attempts(client, db):
+    await seed_user(db, email="user@test.com")
+    tokens = await login(client, "user@test.com")
+    for _ in range(20):
+        resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+        assert resp.status_code == 200
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+    assert resp.status_code == 429
+    assert resp.json()["detail"]["code"] == "RATE_LIMITED"
