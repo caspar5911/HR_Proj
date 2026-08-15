@@ -107,8 +107,10 @@ describe("lib/api axios instance", () => {
       await expect(captured.onError[0](error)).rejects.toBe(error);
       expect(ls.getItem("access_token")).toBeNull();
       expect(ls.getItem("refresh_token")).toBeNull();
-      // Hash routing: login lives in the fragment; BASE_URL is "/" in tests.
-      expect(win.location.href).toBe("/#/login");
+      // Hash routing: login lives in the fragment, after whatever base path
+      // the app was built with ("/" locally, "/<repo>/" when CI sets
+      // VITE_BASE_PATH, as for GitHub Pages).
+      expect(win.location.href).toMatch(/#\/login$/);
     });
 
     it("does not redirect or clear tokens on non-401 errors", async () => {
