@@ -81,7 +81,7 @@ async def _resolve_employee_name(db: AsyncSession, emp_id: int) -> str:
 @router.get(
     "",
     response_model=PaginatedPayrollRunResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.MANAGER))],
 )
 async def api_list_payroll_runs(
     params: PayrollRunListParams = Depends(),
@@ -112,7 +112,7 @@ async def api_list_payroll_runs(
 @router.get(
     "/{run_id}",
     response_model=PayrollRunOut,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.MANAGER))],
 )
 async def api_get_payroll_run(
     run_id: int,
@@ -131,7 +131,7 @@ async def api_get_payroll_run(
 @router.get(
     "/{run_id}/entries",
     response_model=PaginatedPayrollEntryResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.MANAGER))],
 )
 async def api_list_payroll_entries(
     run_id: int,

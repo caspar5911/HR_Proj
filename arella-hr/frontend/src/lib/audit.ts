@@ -48,6 +48,6 @@ export async function listAuditLogs(
   if (params.entity_id) qs.set("entity_id", String(params.entity_id));
   if (params.start) qs.set("start", params.start);
   if (params.end) qs.set("end", params.end);
-  const { data } = await api.get(`/audit-logs?${qs}`);
+  const { data } = await api.get(`/audit-logs/?${qs}`);
   return data;
 }

@@ -14,10 +14,36 @@ describe("route configuration", () => {
     const layout = app.children?.[0];
     expect(layout).toBeDefined();
     expect(React.isValidElement(layout!.element)).toBe(true);
+  });
 
+  it("splits layout routes into role-restricted and open groups", () => {
+    const layout = routes[0].children?.[0];
     const pages = layout!.children ?? [];
-    const paths = pages.map((p) => (p.index ? "/" : p.path));
-    expect(paths).toEqual(["/", "employees", "leave", "payroll"]);
+
+    // [0] admin+manager subtree, [1] admin-only subtree, [2] leave, [3] my-home
+    const staffSubtree = pages[0];
+    const adminSubtree = pages[1];
+    const openRoutes = pages.slice(2);
+
+    expect(React.isValidElement(staffSubtree.element)).toBe(true);
+    expect(React.isValidElement(adminSubtree.element)).toBe(true);
+
+    const staffPaths = (staffSubtree.children ?? [])
+      .map((p) => (p.index ? "/" : p.path));
+    expect(staffPaths).toEqual([
+      "/",
+      "employees",
+      "employees/:employeeId",
+      "org-chart",
+      "payroll",
+    ]);
+
+    const adminPaths = (adminSubtree.children ?? []).map((p) => p.path);
+    expect(adminPaths).toEqual(["audit-logs"]);
+
+    const openPaths = openRoutes.map((p) => p.path);
+    expect(openPaths).toEqual(["leave", "my-home"]);
+
     for (const p of pages) {
       expect(React.isValidElement(p.element)).toBe(true);
     }

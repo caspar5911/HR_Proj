@@ -4,12 +4,16 @@ import math
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.crud import employee as employee_crud
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.employee import Employee
+from app.models.payroll_entry import PayrollEntry
+from app.models.payroll_run import PayrollRun
 from app.models.user import User, UserRole
 from app.schemas.employee import (
     EmployeeCreate,
@@ -19,7 +23,9 @@ from app.schemas.employee import (
     EmployeeUpdate,
     PaginatedResponse,
 )
+from app.schemas.payroll_run import PayslipOut
 from app.services.audit import diff_changes, record_audit
+from app.utils.errors import PermissionDeniedError
 
 router = APIRouter()
 
@@ -70,6 +76,7 @@ async def list_employees_endpoint(
         department=params.department,
         status=params.status,
         position=params.position,
+        include_inactive=params.include_inactive,
     )
     total_pages = math.ceil(total / params.page_size) if total else 0
 
@@ -94,6 +101,103 @@ async def get_org_tree_endpoint(db: AsyncSession = Depends(get_db)) -> Any:
     """Return the full employee hierarchy as a tree."""
     tree = await employee_crud.get_org_tree(db)
     return [_build_out(e) for e in tree]
+
+
+# ── my profile (self-service) ───────────────────────────────────────────────
+
+
+@router.get("/me", response_model=EmployeeOut, dependencies=[Depends(get_current_user)])
+async def get_my_profile_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return the employee record linked to the signed-in user.
+
+    Powers the employee self-service "My Home" page. Returns 404 when the
+    account has no linked directory record.
+    """
+    # Explicit selectinload: the self-referential `manager` relationship does
+    # not honor its declared lazy strategy (SQLAlchemy defers it to first
+    # access, which fails under async). _build_out reads emp.manager.
+    employee = (
+        await db.execute(
+            select(Employee)
+            .options(selectinload(Employee.manager))
+            .where(Employee.user_id == current_user.id)
+        )
+    ).scalar_one_or_none()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No employee profile is linked to this account",
+        )
+    return _build_out(employee)
+
+
+# ── payslips (pay history) ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/{employee_id}/payslips",
+    response_model=list[PayslipOut],
+    dependencies=[Depends(get_current_user)],
+)
+async def get_payslips_endpoint(
+    employee_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return an employee's pay history as payslips, newest period first.
+
+    Access control: admins/managers may view any employee; a plain employee
+    may only view their own payslips.
+    """
+    employee = await employee_crud.get_employee_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        my_profile = (
+            await db.execute(select(Employee).where(Employee.user_id == current_user.id))
+        ).scalar_one_or_none()
+        if my_profile is None or my_profile.id != employee_id:
+            raise PermissionDeniedError("You can only view your own payslips")
+
+    # Processed/paid runs only — draft runs have no trustworthy figures yet.
+    entries = (
+        await db.execute(
+            select(PayrollEntry)
+            .options(selectinload(PayrollEntry.payroll_run))
+            .where(PayrollEntry.employee_id == employee_id)
+            .order_by(PayrollEntry.created_at.desc())
+        )
+    ).scalars().all()
+
+    slips: list[PayslipOut] = []
+    for entry in entries:
+        run = entry.payroll_run
+        if run is None or run.status not in ("processed", "paid"):
+            continue
+        slips.append(
+            PayslipOut(
+                entry_id=entry.id,
+                run_id=run.id,
+                period_start=run.period_start,
+                period_end=run.period_end,
+                run_status=run.status,
+                employee_id=employee.id,
+                employee_name=employee.full_name,
+                position=employee.position,
+                department=employee.department,
+                gross_salary=float(entry.gross_salary),
+                bonuses=float(entry.bonuses),
+                deductions=float(entry.deductions),
+                net_pay=float(entry.net_pay),
+                notes=entry.notes,
+                generated_at=run.generated_at,
+            )
+        )
+    return slips
 
 
 # ── detail ───────────────────────────────────────────────────────────────────

@@ -52,6 +52,12 @@ class Employee(Base):
     user: Mapped["User | None"] = relationship("User", back_populates="employee_profile", lazy="selectin")
     # Adjacency list: manager_id points at the manager; `manager` is many-to-one,
     # `reports` is the one-to-many inverse. remote_side pins the PK side.
+    # CAUTION (SQLAlchemy 2.0.36): the `lazy=` strategies below are NOT honored
+    # for this self-referential pair — observed in practice: neither selectin
+    # nor joined preloads on plain select(Employee); first attribute access
+    # falls back to a synchronous load and raises MissingGreenlet under async.
+    # Every query that touches emp.manager / emp.reports must pass an explicit
+    # loader option (selectinload), as the crud layer already does.
     reports: Mapped[list["Employee"]] = relationship(
         "Employee", back_populates="manager", lazy="selectin"
     )

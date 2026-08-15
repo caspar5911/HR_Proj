@@ -36,3 +36,25 @@
     font-family: system-ui, -apple-system, sans-serif;
   }
 }
+
+/* Printing: only the element marked .print-area (the payslip) is printed.
+   Everything else in the app is hidden while the print dialog is open. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 32px;
+    border: none;
+    border-radius: 0;
+  }
+}

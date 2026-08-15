@@ -13,6 +13,7 @@ the app's own ``calculate_payroll_for_run`` so numbers match the UI.
 import asyncio
 from datetime import date, datetime, timezone
 
+import bcrypt
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
@@ -25,7 +26,7 @@ from app.models.leave_balance import LeaveBalance
 from app.models.leave_request import LeaveRequest
 from app.models.leave_type import LeaveType
 from app.models.payroll_run import PayrollRun
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.payroll import calculate_payroll_for_run
 
 YEAR = 2026
@@ -51,7 +52,7 @@ EMPLOYEES = [
      "Senior Backend Engineer", "Engineering", 115000, "active", date(2022, 1, 10), "Maya Chen",
      "88 Beacon Ave, Somerville, MA"),
     ("Liam", "Torres", "liam.torres@arellahr.com", "+1-555-0103",
-     "Frontend Engineer", "Engineering", 95000, "active", date(2023, 4, 3), "Maya Chen",
+     "Frontend Engineer", "Engineering", 95000, "active", date(2025, 11, 12), "Maya Chen",
      "5 Faneuil Plaza, Boston, MA"),
     ("Grace", "Kim", "grace.kim@arellahr.com", "+1-555-0104",
      "QA Engineer", "Engineering", 70000, "inactive", date(2021, 8, 30), "Maya Chen",
@@ -60,22 +61,22 @@ EMPLOYEES = [
      "Design Lead", "Design", 110000, "active", date(2021, 11, 8), None,
      "10 Beacon St, Boston, MA"),
     ("Priya", "Nair", "priya.nair@arellahr.com", "+1-555-0106",
-     "Product Designer", "Design", 98000, "active", date(2022, 9, 12), "Noa Berg",
+     "Product Designer", "Design", 98000, "active", date(2026, 1, 15), "Noa Berg",
      "215 Summer St, Boston, MA"),
     ("Elena", "Petrova", "elena.petrova@arellahr.com", "+1-555-0107",
      "Marketing Manager", "Marketing", 92000, "active", date(2022, 5, 16), None,
      "77 Commercial St, Boston, MA"),
     ("Aisha", "Bello", "aisha.bello@arellahr.com", "+1-555-0108",
-     "Content Specialist", "Marketing", 60000, "on_leave", date(2023, 10, 2), "Elena Petrova",
+     "Content Specialist", "Marketing", 60000, "on_leave", date(2025, 10, 6), "Elena Petrova",
      "141 Congress St, Boston, MA"),
     ("Marcus", "Webb", "marcus.webb@arellahr.com", "+1-555-0109",
      "Sales Manager", "Sales", 75000, "active", date(2023, 2, 20), None,
      "450 Park St, Boston, MA"),
     ("David", "Park", "david.park@arellahr.com", "+1-555-0110",
-     "Sales Operations Analyst", "Sales", 65000, "active", date(2024, 1, 8), "Marcus Webb",
+     "Sales Operations Analyst", "Sales", 65000, "active", date(2026, 4, 7), "Marcus Webb",
      "120 Federal St, Boston, MA"),
     ("Tomas", "Silva", "tomas.silva@arellahr.com", "+1-555-0111",
-     "Finance Analyst", "Finance", 78000, "on_leave", date(2023, 7, 1), None,
+     "Finance Analyst", "Finance", 78000, "on_leave", date(2025, 12, 18), None,
      "60 State St, Boston, MA"),
     ("Jordan", "Avery", "jordan.avery@arellahr.com", "+1-555-0112",
      "Head of HR", "HR", 88000, "active", date(2022, 3, 15), None,
@@ -177,8 +178,28 @@ async def main() -> None:
             if mgr:
                 e.manager_id = emps[mgr].id
 
-        # Jordan Avery is the admin user's employee record — this makes the
-        # admin's "Leave Balances" card show data in the demo.
+        # ── Demo login accounts (role-aware UI walkthrough) ──────────────
+        # Jordan Avery is the admin's employee record so the admin's own
+        # self-service pages also show data. A manager and a plain employee
+        # account demo the role-aware UI: the manager gets approvals and
+        # dashboard views, the employee gets the self-service "My Home".
+        demo_accounts = [
+            ("manager@example.com", "manager123", UserRole.MANAGER, "Elena Petrova"),
+            ("employee@example.com", "employee123", UserRole.EMPLOYEE, "Sam Okafor"),
+        ]
+        for email, password, role, linked_name in demo_accounts:
+            demo_user = User(
+                email=email,
+                hashed_password=bcrypt.hashpw(
+                    password.encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8"),
+                role=role,
+                is_active=True,
+            )
+            db.add(demo_user)
+            await db.flush()
+            emps[linked_name].user_id = demo_user.id
+
         emps["Jordan Avery"].user_id = admin.id
         await db.commit()
 
@@ -291,6 +312,11 @@ async def main() -> None:
             f"balance sets, {len(LEAVE_REQUESTS)} leave requests, "
             f"{len(DEDUCTION_RULES)} deduction rules, "
             f"July run processed ({len(july_entries)} entries), August run draft."
+        )
+        print(
+            "[demo-seed] Login accounts: admin@example.com (password from "
+            "SEED_ADMIN_PASSWORD), manager@example.com / manager123, "
+            "employee@example.com / employee123"
         )
 
 

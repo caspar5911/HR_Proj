@@ -7,6 +7,13 @@
 //   1. demo/videos/*.webm        (raw Playwright recording)
 //   2. demo/arella-hr-walkthrough.mp4  (H.264, ready to share)
 //
+// The tour covers both sides of the product:
+//   Admin/manager:  dashboard (KPIs + charts + team calendar + activity),
+//                   directory search & filters, employee profile, org chart,
+//                   leave approvals, payroll run processing.
+//   Employee:       "My Home" self-service (balances, pay history, printable
+//                   payslip) and the employee-scoped leave page.
+//
 // Prereqs:
 //   - Docker Compose stack is up (db + backend on :8010 + frontend on :5173)
 //   - Demo data is seeded:  docker compose exec backend python /app/seed_demo.py
@@ -68,6 +75,15 @@ async function setCaption(page, text) {
 const navLink = (page, name) =>
   page.locator("aside nav").getByText(name, { exact: true });
 
+async function signIn(page, email, password) {
+  await page.locator("#email").click();
+  await page.locator("#email").type(email, { delay: 45 });
+  await page.locator("#password").click();
+  await page.locator("#password").type(password, { delay: 60 });
+  await sleep(300);
+  await page.getByRole("button", { name: "Sign In" }).click();
+}
+
 async function main() {
   fs.mkdirSync(VIDEO_DIR, { recursive: true });
 
@@ -80,57 +96,56 @@ async function main() {
   page.setDefaultTimeout(25000);
 
   try {
-    /* ── 1. Login ─────────────────────────────────────────────────── */
+    /* ── 1. Login (admin) ─────────────────────────────────────────── */
     await page.goto(`${BASE}/#/login`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Arella HR", level: 1 }).waitFor();
-    await setCaption(page, "Welcome to Arella HR — signing in");
-    await sleep(1500);
-
-    await page.locator("#email").click();
-    await page.locator("#email").type("admin@example.com", { delay: 55 });
-    await page.locator("#password").click();
-    await page.locator("#password").type("admin123", { delay: 80 });
-    await sleep(400);
-    await page.getByRole("button", { name: "Sign In" }).click();
+    // Login card's h1 is "Sign in" — "Arella HR" there is a <p> logo line.
+    await page.getByRole("heading", { name: "Sign in", level: 1 }).waitFor();
+    await setCaption(page, "Welcome to Arella HR — signing in as HR admin");
+    await sleep(1200);
+    await signIn(page, "admin@example.com", "admin123");
 
     /* ── 2. Dashboard ─────────────────────────────────────────────── */
     await page.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
     await page.getByText("Active Employees").waitFor();
-    await setCaption(page, "Dashboard — live overview of the whole organization");
-    await sleep(6000);
+    await setCaption(page, "Dashboard — live KPIs, hiring trend, and the team absence calendar");
+    await sleep(7000);
 
-    /* ── 3. Employees: directory + search ─────────────────────────── */
+    /* ── 3. Employees: directory + department filter ──────────────── */
     await navLink(page, "Employees").click();
     await page.getByRole("heading", { name: "Employees", level: 1 }).waitFor();
-    // List is newest-first (created_at desc) with page_size 10, so the
-    // most recently seeded employee (Jordan Avery, id 12) is the first row.
     await page.locator("tr", { hasText: "Jordan Avery" }).waitFor();
     await setCaption(page, "Employees — the team directory");
-    await sleep(3500);
+    await sleep(3000);
 
-    await setCaption(page, "Searching for an employee by name");
-    const search = page.getByPlaceholder("Search employees...");
-    await search.click();
-    await search.type("Maya", { delay: 90 });
-    await sleep(1600); // debounce + refetch
-    await sleep(2500);
-    await search.fill("");
-    await sleep(1200);
-
-    /* ── 4. Employees: department filter ──────────────────────────── */
     await setCaption(page, "Filtering the directory by department: Engineering");
     // Radix Select triggers are <button role="combobox"> whose placeholder
     // is an inner span — match on visible text, not accessible name.
     const deptSelect = (re) => page.locator('button[role="combobox"]').filter({ hasText: re });
     await deptSelect(/departments/i).click();
     await page.getByRole("option", { name: "Engineering" }).click();
-    await sleep(1400);
     await sleep(3000);
     await deptSelect("Engineering").click();
     await page.getByRole("option", { name: "All Departments" }).click();
     await sleep(1200);
 
-    /* ── 5. Leave: approval queue ─────────────────────────────────── */
+    /* ── 4. Employee profile via search ───────────────────────────── */
+    await setCaption(page, "Searching for Sam Okafor and opening his profile");
+    const search = page.getByPlaceholder("Search employees...");
+    await search.click();
+    await search.type("Sam", { delay: 90 });
+    await sleep(2200); // debounce + refetch
+    await page.getByRole("link", { name: "Sam Okafor" }).click();
+    await page.getByRole("heading", { name: /Sam Okafor/ }).waitFor();
+    await setCaption(page, "Employee profile — role, manager, and team at a glance");
+    await sleep(5000);
+
+    /* ── 5. Org chart ─────────────────────────────────────────────── */
+    await navLink(page, "Org Chart").click();
+    await page.getByText("Engineering Director").waitFor();
+    await setCaption(page, "Org chart — the full reporting structure");
+    await sleep(6000);
+
+    /* ── 6. Leave: approval queue ─────────────────────────────────── */
     await navLink(page, "Leave").click();
     await page.getByRole("heading", { name: "Leave Management", level: 1 }).waitFor();
     await setCaption(page, "Leave management — requests and balances at a glance");
@@ -140,24 +155,24 @@ async function main() {
     await page.getByRole("button", { name: /Approval Queue/ }).click();
     await sleep(1600);
 
-    /* ── 6. Approve one request ───────────────────────────────────── */
+    /* ── 7. Approve one request ───────────────────────────────────── */
     await setCaption(page, "Approving Sam Okafor's annual leave request");
     const samRow = page.locator("tr", { hasText: "Sam Okafor" });
     await samRow.locator("button").first().click();
     await samRow.getByText("Approved", { exact: true }).waitFor();
     await sleep(2800);
 
-    /* ── 7. Reject one request ────────────────────────────────────── */
+    /* ── 8. Reject one request ────────────────────────────────────── */
     await setCaption(page, "Rejecting Liam Torres's personal leave request");
     const liamRow = page.locator("tr", { hasText: "Liam Torres" });
     await liamRow.locator("button").nth(1).click();
     await liamRow.getByText("Rejected", { exact: true }).waitFor();
     await sleep(2800);
 
-    /* ── 8. Payroll: review processed July run ────────────────────── */
+    /* ── 9. Payroll: review processed July run ────────────────────── */
     await navLink(page, "Payroll").click();
     await page.getByRole("heading", { name: "Payroll & Compensation" }).waitFor();
-    await sleep(3500);
+    await sleep(3000);
 
     await setCaption(page, "Payroll — reviewing the processed July run");
     const julRow = page.locator("tr", { hasText: "Jul 1, 2026" });
@@ -167,7 +182,7 @@ async function main() {
     await page.getByRole("button", { name: "Close" }).click();
     await sleep(900);
 
-    /* ── 9. Payroll: process the August draft run ─────────────────── */
+    /* ── 10. Payroll: process the August draft run ────────────────── */
     await setCaption(page, "Processing the August draft run");
     const augRow = page.locator("tr", { hasText: "Aug 1, 2026" });
     await augRow.locator('[title="Process Run"]').click();
@@ -180,7 +195,7 @@ async function main() {
     await augRow.getByText("Processed", { exact: true }).waitFor();
     await sleep(3000);
 
-    /* ── 10. Payroll: entries generated for August ────────────────── */
+    /* ── 11. Payroll: entries generated for August ────────────────── */
     await setCaption(page, "Entries generated automatically for August");
     await augRow.locator('[title="View Entries"]').click();
     await page.getByText("Total Net").waitFor();
@@ -188,11 +203,42 @@ async function main() {
     await page.getByRole("button", { name: "Close" }).click();
     await sleep(900);
 
-    /* ── 11. Dashboard wrap-up ────────────────────────────────────── */
-    await navLink(page, "Dashboard").click();
-    await page.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
-    await setCaption(page, "Back to the dashboard — pending leave and payroll are up to date");
-    await sleep(7000);
+    /* ── 12. Sign out ─────────────────────────────────────────────── */
+    await setCaption(page, "Signing out to show the employee side");
+    await page.locator('button[title="Sign out"]').click();
+    await page.locator("#email").waitFor();
+    await sleep(1500);
+
+    /* ── 13. Login (employee) ─────────────────────────────────────── */
+    await setCaption(page, "Signing in as Sam Okafor — employee self-service");
+    await signIn(page, "employee@example.com", "employee123");
+    // My Home's h1 is a "Hi {name} 👋" greeting — "My Home" is only the
+    // sidebar nav item, so wait for the balances card instead.
+    await page.getByText("Leave balances").waitFor();
+    await setCaption(page, "My Home — balances, pay history, and requests in one place");
+    await sleep(6000);
+
+    /* ── 14. Printable payslip ────────────────────────────────────── */
+    await setCaption(page, "Opening the just-processed August payslip — printable");
+    await page.getByRole("button", { name: /Payslip/ }).first().click();
+    await page.getByText("Print / Save PDF").waitFor();
+    await sleep(5000);
+    // DialogContent adds its own X close button named "Close" (sr-only span),
+    // so "Close" matches twice here — the text button renders first in DOM.
+    await page.getByRole("button", { name: "Close", exact: true }).first().click();
+    await sleep(900);
+
+    /* ── 15. Employee leave page ──────────────────────────────────── */
+    await navLink(page, "My Leave").click();
+    await page.getByRole("heading", { name: "Leave Management", level: 1 }).waitFor();
+    await page.getByText("Leave Balances").waitFor();
+    await setCaption(page, "My Leave — this employee's requests and balances only");
+    await sleep(4500);
+
+    /* ── 16. Wrap-up ──────────────────────────────────────────────── */
+    await navLink(page, "My Home").click();
+    await setCaption(page, "Arella HR — people and payroll, for managers and employees");
+    await sleep(5000);
   } finally {
     const video = page.video();
     await context.close();

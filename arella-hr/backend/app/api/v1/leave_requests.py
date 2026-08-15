@@ -5,6 +5,7 @@ import math
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.crud.leave_request import (
     approve_leave_request,
@@ -154,9 +155,14 @@ async def api_create_leave_request(
     """Create a new leave request (authenticated user)."""
     emp_id = await _get_employee_id_for_user(db, current_user)
 
-    # Get employee record for status + department check
+    # Get employee record for status + department check.
+    # selectinload(Employee.manager): notify_leave_requested() below resolves
+    # the manager's email, and the self-referential `manager` relationship
+    # must be loaded explicitly (its declared lazy strategy is not honored).
     result = await db.execute(
-        select(Employee).where(Employee.id == emp_id)
+        select(Employee)
+        .options(selectinload(Employee.manager))
+        .where(Employee.id == emp_id)
     )
     employee = result.scalar_one_or_none()
     if employee and employee.status != "active":

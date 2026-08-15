@@ -64,6 +64,7 @@ export interface EmployeeListParams {
   department?: string;
   status?: string;
   position?: string;
+  include_inactive?: boolean;
 }
 
 export function listEmployees(params: EmployeeListParams = {}) {
@@ -94,6 +95,47 @@ export function deleteEmployee(id: number) {
   return api.delete(`/employees/${id}`);
 }
 
+/** Recursive org tree node (top-level employees + nested direct reports). */
+export interface OrgNode extends Employee {
+  manager?: OrgNode | null;
+  reports: OrgNode[];
+}
+
 export function getOrgTree() {
-  return api.get<Employee[]>("/employees/org-tree");
+  return api.get<OrgNode[]>("/employees/org-tree");
+}
+
+/**
+ * A single payslip: a payroll entry enriched with its run's period and the
+ * employee's identifying details (printable stub).
+ */
+export interface Payslip {
+  entry_id: number;
+  run_id: number;
+  period_start: string;
+  period_end: string;
+  run_status: string;
+  employee_id: number;
+  employee_name: string;
+  position: string | null;
+  department: string | null;
+  gross_salary: number;
+  bonuses: number;
+  deductions: number;
+  net_pay: number;
+  notes: string | null;
+  generated_at: string | null;
+}
+
+/**
+ * The employee record linked to the signed-in user (404 when unlinked).
+ * Powers the employee self-service "My Home" page.
+ */
+export function getMyProfile() {
+  return api.get<Employee>("/employees/me").then((r) => r.data);
+}
+
+/** An employee's pay history as payslips, newest period first. */
+export function getPayslips(employeeId: number) {
+  return api.get<Payslip[]>(`/employees/${employeeId}/payslips`).then((r) => r.data);
 }

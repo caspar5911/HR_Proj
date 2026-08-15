@@ -105,6 +105,9 @@ class EmployeeListParams(BaseModel):
     department: Optional[str] = None
     status: Optional[str] = None  # active | inactive | on_leave
     position: Optional[str] = None
+    # When True, inactive employees are included in results. Filtering by
+    # ``status=inactive`` implies this automatically.
+    include_inactive: bool = False
 
 
 class PaginatedResponse(BaseModel):

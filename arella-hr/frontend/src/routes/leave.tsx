@@ -4,6 +4,7 @@ import { differenceInCalendarDays } from "date-fns";
 import { Check, X, Clock, CalendarDays, Plus, Ban, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listLeaveRequests, createLeaveRequest, approveLeaveRequest, rejectLeaveRequest, cancelLeaveRequest, listLeaveTypes, listDepartments, listLeaveBalances, type LeaveRequest, type LeaveRequestCreate, type LeaveType, type Department } from "@/lib/leave";
+import { getMyProfile } from "@/lib/employee";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -190,9 +191,18 @@ export default function LeavePage() {
     queryFn: () => listDepartments(),
   });
 
+  // The employee record linked to the signed-in user. Balance lookups and the
+  // "My Requests" filter are keyed on this record's id, not the auth user id.
+  const { data: me } = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: getMyProfile,
+    retry: false,
+  });
+
   const { data: balances } = useQuery({
-    queryKey: ["leave-balances", { employeeId: user?.id }],
-    queryFn: () => listLeaveBalances(user?.id),
+    queryKey: ["leave-balances", me?.id],
+    queryFn: () => listLeaveBalances(me!.id),
+    enabled: !!me,
   });
 
   const createMutation = useMutation({
@@ -234,7 +244,7 @@ export default function LeavePage() {
   const items = paginated?.items ?? [];
   const totalPages = paginated?.total_pages ?? 0;
   const pendingItems = items.filter((i) => i.status === "pending");
-  const myRequests = items.filter((i) => i.employee_id === user?.id);
+  const myRequests = items.filter((i) => i.employee_id === me?.id);
   const showMyRequests = !isAdminOrManager || activeTab === "my_requests";
 
   const totalAll = items.length;
@@ -412,7 +422,7 @@ export default function LeavePage() {
                               </Button>
                             </>
                           )}
-                          {(req.status === "pending" || req.status === "approved") && req.employee_id === user?.id && (
+                          {(req.status === "pending" || req.status === "approved") && req.employee_id === me?.id && (
                             <Button
                               size="sm"
                               variant="ghost"

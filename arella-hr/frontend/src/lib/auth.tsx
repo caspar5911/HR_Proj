@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "./api";
 
 export interface User {
@@ -20,6 +21,7 @@ export interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -47,12 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("access_token", res.data.access_token);
     localStorage.setItem("refresh_token", res.data.refresh_token);
     const me = await api.get("/auth/me");
+    // A different account is now active. Query keys are not user-scoped, so
+    // drop every cached query — data fetched under the previous session
+    // (my profile, my requests, payslips, …) must not leak to this user.
+    queryClient.clear();
     setUser(me.data);
   };
 
   const logout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    queryClient.clear();
     setUser(null);
   };
 

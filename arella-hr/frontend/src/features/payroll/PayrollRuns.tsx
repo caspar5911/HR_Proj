@@ -20,9 +20,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Eye, Plus, Trash2, Play, ChevronLeft, ChevronRight,
-  DollarSign, Users, Calendar, TrendingUp, Search,
+  DollarSign, Users, Calendar, TrendingUp, Search, ReceiptText,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { PayslipDialog } from "./Payslip";
+import type { Payslip } from "@/lib/employee";
 
 function statusBadgeClass(status: string): string {
   if (status === "draft") return "bg-yellow-100 text-yellow-800 border-yellow-200";
@@ -96,8 +98,27 @@ function ViewEntriesModal({ run, open, onOpenChange }: {
     queryFn: () => listPayrollEntries(run.id),
     enabled: open,
   });
+  const [openPayslip, setOpenPayslip] = useState<Payslip | null>(null);
   const entries = data?.items ?? [];
+  const toPayslip = (e: (typeof entries)[number]): Payslip => ({
+    entry_id: e.id,
+    run_id: run.id,
+    period_start: run.period_start,
+    period_end: run.period_end,
+    run_status: run.status,
+    employee_id: e.employee_id,
+    employee_name: e.employee_name,
+    position: null,
+    department: null,
+    gross_salary: e.gross_salary,
+    bonuses: e.bonuses,
+    deductions: e.deductions,
+    net_pay: e.net_pay,
+    notes: e.notes,
+    generated_at: run.generated_at,
+  });
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
@@ -115,11 +136,12 @@ function ViewEntriesModal({ run, open, onOpenChange }: {
                   <TableHead className="text-right">Deductions</TableHead>
                   <TableHead className="text-right">Bonuses</TableHead>
                   <TableHead className="text-right">Net</TableHead>
+                  <TableHead className="w-[110px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {entries.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No entries yet — process this run first.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No entries yet — process this run first.</TableCell></TableRow>
                 ) : (
                   entries.map((e) => (
                     <TableRow key={e.id}>
@@ -128,6 +150,12 @@ function ViewEntriesModal({ run, open, onOpenChange }: {
                       <TableCell className="text-right text-red-600">-{formatCurrency(e.deductions)}</TableCell>
                       <TableCell className="text-right text-green-600">+{formatCurrency(e.bonuses)}</TableCell>
                       <TableCell className="text-right font-semibold">{formatCurrency(e.net_pay)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => setOpenPayslip(toPayslip(e))}>
+                          <ReceiptText className="h-4 w-4 mr-1.5" />
+                          Payslip
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -144,6 +172,8 @@ function ViewEntriesModal({ run, open, onOpenChange }: {
         )}
       </DialogContent>
     </Dialog>
+    <PayslipDialog payslip={openPayslip} open={!!openPayslip} onOpenChange={(o) => !o && setOpenPayslip(null)} />
+    </>
   );
 }
 

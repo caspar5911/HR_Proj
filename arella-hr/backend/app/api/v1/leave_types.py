@@ -19,7 +19,7 @@ from app.services.audit import diff_changes, record_audit
 router = APIRouter()
 
 
-@router.get("/", response_model=list[LeaveTypeOut])
+@router.get("/", response_model=list[LeaveTypeOut], dependencies=[Depends(get_current_user)])
 async def api_list_leave_types(
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
@@ -31,7 +31,7 @@ async def api_list_leave_types(
     return types
 
 
-@router.get("/{leave_type_id}", response_model=LeaveTypeOut)
+@router.get("/{leave_type_id}", response_model=LeaveTypeOut, dependencies=[Depends(get_current_user)])
 async def api_get_leave_type(
     leave_type_id: int,
     db: AsyncSession = Depends(get_db),

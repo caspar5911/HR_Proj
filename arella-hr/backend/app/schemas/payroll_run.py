@@ -103,3 +103,29 @@ class PaginatedPayrollEntryResponse(BaseModel):
     page_size: int
     total_pages: int
     run_id: int
+
+
+# ── Payslip (per-employee pay history) ───────────────────────────────────────
+
+
+class PayslipOut(BaseModel):
+    """A single payslip: a payroll entry enriched with its run's period and
+    the employee's identifying details, ready to render as a printable stub."""
+
+    entry_id: int
+    run_id: int
+    period_start: date
+    period_end: date
+    run_status: str
+    employee_id: int
+    employee_name: str
+    position: str | None
+    department: str | None
+    gross_salary: float
+    bonuses: float
+    deductions: float
+    net_pay: float
+    notes: str | None
+    generated_at: datetime | None
+
+    model_config = {"from_attributes": True}

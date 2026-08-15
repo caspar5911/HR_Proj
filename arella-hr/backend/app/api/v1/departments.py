@@ -19,7 +19,7 @@ from app.services.audit import diff_changes, record_audit
 router = APIRouter()
 
 
-@router.get("/", response_model=list[DepartmentOut])
+@router.get("/", response_model=list[DepartmentOut], dependencies=[Depends(get_current_user)])
 async def api_list_departments(
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
@@ -30,7 +30,7 @@ async def api_list_departments(
     return depts
 
 
-@router.get("/{department_id}", response_model=DepartmentOut)
+@router.get("/{department_id}", response_model=DepartmentOut, dependencies=[Depends(get_current_user)])
 async def api_get_department(
     department_id: int,
     db: AsyncSession = Depends(get_db),

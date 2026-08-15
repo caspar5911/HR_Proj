@@ -37,7 +37,7 @@ def _build_out(log) -> AuditLogOut:
 
 
 @router.get(
-    "",
+    "/",
     response_model=PaginatedAuditLogResponse,
     dependencies=[Depends(require_role(UserRole.ADMIN))],
 )

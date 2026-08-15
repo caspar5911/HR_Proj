@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import {
@@ -127,7 +128,7 @@ export default function EmployeesPage() {
   useEffect(() => { const t = setTimeout(() => setDebounced(search), 300); return () => clearTimeout(t); }, [search]);
   const { data, isLoading } = useQuery({
     queryKey: ["employees", { page, pageSize, search: debounced, department: deptFilter, status: statusFilter }],
-    queryFn: async () => (await listEmployees({ page, page_size: pageSize, search: debounced || undefined, department: deptFilter || undefined, status: statusFilter || undefined })).data,
+    queryFn: async () => (await listEmployees({ page, page_size: pageSize, search: debounced || undefined, department: deptFilter || undefined, status: statusFilter || undefined, include_inactive: statusFilter === "inactive" || undefined })).data,
   });
   const mCreate = useMutation({ mutationFn: createEmployee, onSuccess: () => { qc.invalidateQueries({ queryKey: ["employees"] }); setModalOpen(false); toast.success("Employee created successfully"); } });
   const mUpdate = useMutation({ mutationFn: ({ id, data }: { id: number; data: EmployeeUpdate }) => updateEmployee(id, data), onSuccess: () => { qc.invalidateQueries({ queryKey: ["employees"] }); setModalOpen(false); setEditing(null); toast.success("Employee updated successfully"); } });
@@ -156,7 +157,7 @@ export default function EmployeesPage() {
   const onLeaveCount = emps.filter((e) => e.status === "on_leave").length;
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Employees</h1>
@@ -237,8 +238,12 @@ export default function EmployeesPage() {
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-medium text-sm">
                       {emp.first_name.charAt(0)}{emp.last_name.charAt(0)}
                     </div>
-                    <div><p className="font-medium">{emp.first_name} {emp.last_name}</p>
-                      <p className="text-sm text-muted-foreground">{emp.email}</p></div>
+                    <div>
+                      <Link to={`/employees/${emp.id}`} className="font-medium hover:text-blue-600 transition-colors">
+                        {emp.first_name} {emp.last_name}
+                      </Link>
+                      <p className="text-sm text-muted-foreground">{emp.email}</p>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>{emp.department ?? "-"}</TableCell>
