@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 
 export function MainLayout() {
@@ -11,18 +11,18 @@ export function MainLayout() {
           <p className="text-xs text-slate-400 mt-1">HR Management System</p>
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          <a href="/" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
+          <Link to="/" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
             Dashboard
-          </a>
-          <a href="/employees" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
+          </Link>
+          <Link to="/employees" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
             Employees
-          </a>
-          <a href="/leave" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
+          </Link>
+          <Link to="/leave" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
             Leave
-          </a>
-          <a href="/payroll" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
+          </Link>
+          <Link to="/payroll" className="block px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">
             Payroll
-          </a>
+          </Link>
         </nav>
         <UserMenu />
       </aside>
