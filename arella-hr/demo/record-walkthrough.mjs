@@ -10,9 +10,11 @@
 // The tour covers both sides of the product:
 //   Admin/manager:  dashboard (KPIs + charts + team calendar + activity),
 //                   directory search & filters, employee profile, org chart,
-//                   leave approvals, payroll run processing.
+//                   leave approvals, payroll run processing, and team
+//                   attendance (hours, overtime, per-employee drill-down).
 //   Employee:       "My Home" self-service (balances, pay history, printable
-//                   payslip) and the employee-scoped leave page.
+//                   payslip), the employee-scoped leave page, and "My Time"
+//                   (clock in/out + monthly time log).
 //
 // Prereqs:
 //   - Docker Compose stack is up (db + backend on :8010 + frontend on :5173)
@@ -22,8 +24,9 @@
 // Run from anywhere:
 //   node "C:\...\arella-hr\demo\record-walkthrough.mjs"
 //
-// The recording mutates demo state (approves/rejects 2 leave requests and
-// processes the August payroll run). Re-seed afterwards to reset:
+// The recording mutates demo state (approves/rejects 2 leave requests,
+// processes the August payroll run, and clocks in the demo employee for
+// today). Re-seed afterwards to reset:
 //   docker compose exec backend python /app/seed_demo.py
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -203,7 +206,20 @@ async function main() {
     await page.getByRole("button", { name: "Close" }).click();
     await sleep(900);
 
-    /* ── 12. Sign out ─────────────────────────────────────────────── */
+    /* ── 12. Attendance: team rollup ──────────────────────────────── */
+    await navLink(page, "Attendance").click();
+    await page.getByRole("heading", { name: "Attendance", level: 1 }).waitFor();
+    await page.getByText("Team Members").waitFor();
+    await setCaption(page, "Attendance — recorded hours and overtime across the team");
+    await sleep(5000);
+
+    /* ── 13. Attendance: per-employee drill-down ──────────────────── */
+    await setCaption(page, "Drilling into Sam Okafor's day-by-day entries");
+    await page.locator("tr", { hasText: "Sam Okafor" }).click();
+    await page.getByText("Sam Okafor — August 2026").waitFor();
+    await sleep(5000);
+
+    /* ── 14. Sign out ─────────────────────────────────────────────── */
     await setCaption(page, "Signing out to show the employee side");
     await page.locator('button[title="Sign out"]').click();
     await page.locator("#email").waitFor();
@@ -235,7 +251,20 @@ async function main() {
     await setCaption(page, "My Leave — this employee's requests and balances only");
     await sleep(4500);
 
-    /* ── 16. Wrap-up ──────────────────────────────────────────────── */
+    /* ── 16. My Time: month log ───────────────────────────────────── */
+    await navLink(page, "My Time").click();
+    await page.getByRole("heading", { name: "My Time", level: 1 }).waitFor();
+    await page.getByText("Total Hours").waitFor();
+    await setCaption(page, "My Time — the month's recorded hours at a glance");
+    await sleep(4000);
+
+    /* ── 17. My Time: clock in for today ──────────────────────────── */
+    await setCaption(page, "Clocking in for today — one click");
+    await page.getByRole("button", { name: /Clock In/ }).click();
+    await page.getByText(/Clocked in/).waitFor();
+    await sleep(4000);
+
+    /* ── 18. Wrap-up ──────────────────────────────────────────────── */
     await navLink(page, "My Home").click();
     await setCaption(page, "Arella HR — people and payroll, for managers and employees");
     await sleep(5000);

@@ -36,13 +36,14 @@ describe("route configuration", () => {
       "employees/:employeeId",
       "org-chart",
       "payroll",
+      "attendance",
     ]);
 
     const adminPaths = (adminSubtree.children ?? []).map((p) => p.path);
     expect(adminPaths).toEqual(["audit-logs"]);
 
     const openPaths = openRoutes.map((p) => p.path);
-    expect(openPaths).toEqual(["leave", "my-home"]);
+    expect(openPaths).toEqual(["leave", "my-home", "my-time"]);
 
     for (const p of pages) {
       expect(React.isValidElement(p.element)).toBe(true);

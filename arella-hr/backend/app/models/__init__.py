@@ -23,9 +23,11 @@ from app.models.payroll_run import PayrollRun  # noqa: F401
 from app.models.payroll_entry import PayrollEntry  # noqa: F401
 from app.models.deduction_rule import DeductionRule  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
+from app.models.time_entry import TimeEntry  # noqa: F401
 
 __all__ = [
     "Base", "User", "UserRole", "Employee", "Department",
     "LeaveType", "LeaveBalance", "LeaveRequest",
     "PayrollRun", "PayrollEntry", "DeductionRule", "AuditLog",
+    "TimeEntry",
 ]

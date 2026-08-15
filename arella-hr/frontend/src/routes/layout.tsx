@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  CalendarCheck,
   CalendarDays,
+  Clock,
   FileClock,
   Home,
   LayoutDashboard,
@@ -22,13 +24,16 @@ const STAFF_NAV = [
   { to: "/org-chart", label: "Org Chart", icon: Network },
   { to: "/leave", label: "Leave", icon: CalendarDays },
   { to: "/payroll", label: "Payroll", icon: Wallet },
+  { to: "/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/my-home", label: "My Home", icon: Home },
+  { to: "/my-time", label: "My Time", icon: Clock },
   { to: "/audit-logs", label: "Audit Log", icon: FileClock },
 ];
 
 const EMPLOYEE_NAV = [
   { to: "/my-home", label: "My Home", icon: Home, end: true },
   { to: "/leave", label: "My Leave", icon: CalendarDays },
+  { to: "/my-time", label: "My Time", icon: Clock },
 ];
 
 export function MainLayout() {

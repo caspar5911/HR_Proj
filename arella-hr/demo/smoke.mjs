@@ -102,6 +102,12 @@ async function main() {
     await sleep(1500);
   });
 
+  await step("attendance page renders", async () => {
+    await nav("Attendance");
+    await page.getByRole("heading", { name: "Attendance", level: 1 }).waitFor();
+    await page.getByText("Team Members").waitFor();
+  });
+
   // ── Employee session ─────────────────────────────────────────────────────
   console.log("\n[smoke] employee session");
 
@@ -128,6 +134,19 @@ async function main() {
     } else {
       await page.getByText(/Payslips|No payslips yet/).first().waitFor();
     }
+  });
+
+  await step("my-time page renders", async () => {
+    await nav("My Time");
+    await page.getByRole("heading", { name: "My Time", level: 1 }).waitFor();
+    await page.getByText("Total Hours").waitFor();
+  });
+
+  await step("attendance hidden from employee", async () => {
+    const attLink = page
+      .locator("aside nav")
+      .getByText("Attendance", { exact: true });
+    if (await attLink.count()) throw new Error("Attendance link visible to employee");
   });
 
   await step("audit log hidden from employee", async () => {

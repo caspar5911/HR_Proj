@@ -11,7 +11,8 @@ the app's own ``calculate_payroll_for_run`` so numbers match the UI.
 """
 
 import asyncio
-from datetime import date, datetime, timezone
+import random
+from datetime import date, datetime, time, timedelta, timezone
 
 import bcrypt
 from sqlalchemy import select, text
@@ -26,10 +27,15 @@ from app.models.leave_balance import LeaveBalance
 from app.models.leave_request import LeaveRequest
 from app.models.leave_type import LeaveType
 from app.models.payroll_run import PayrollRun
+from app.models.time_entry import TimeEntry
 from app.models.user import User, UserRole
 from app.services.payroll import calculate_payroll_for_run
 
 YEAR = 2026
+
+# Time-entry demo window: late June through the last full week of August.
+TIME_ENTRY_START = date(2026, 6, 29)
+TIME_ENTRY_END = date(2026, 8, 14)
 
 
 # ── Demo data ──────────────────────────────────────────────────────────────
@@ -132,6 +138,14 @@ DEDUCTION_RULES = [
 MOZILLA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
+TIME_ENTRY_NOTES = [
+    "WFH",
+    "Late start — appointment",
+    "Focus day, no meetings",
+    "Commuter delay",
+    "Covered on-call for part of the day",
+]
+
 
 async def main() -> None:
     async with async_session() as db:
@@ -139,8 +153,8 @@ async def main() -> None:
         await db.execute(
             text(
                 "TRUNCATE TABLE payroll_entries, payroll_runs, leave_requests, "
-                "leave_balances, employees, departments, leave_types, "
-                "deduction_rules, audit_logs RESTART IDENTITY CASCADE"
+                "leave_balances, time_entries, employees, departments, "
+                "leave_types, deduction_rules, audit_logs RESTART IDENTITY CASCADE"
             )
         )
         await db.execute(
@@ -244,6 +258,62 @@ async def main() -> None:
             ))
         await db.commit()
 
+        # 6b. Time entries — realistic clock in/out days per active employee,
+        #     skipping weekdays covered by an approved leave request.
+        approved_days: dict[str, set[date]] = {}
+        for full, _ltype, start, end, lstatus, *_rest in LEAVE_REQUESTS:
+            if lstatus != "approved":
+                continue
+            days = approved_days.setdefault(full, set())
+            d = start
+            while d <= end:
+                days.add(d)
+                d += timedelta(days=1)
+
+        # The employee demo account (Sam) keeps the most recent weekday
+        # "open" — clocked in but not clocked out — so the UI can show a
+        # live clock-out flow.
+        open_day = TIME_ENTRY_END
+        while open_day.weekday() >= 5:  # Saturday=5, Sunday=6
+            open_day -= timedelta(days=1)
+        open_emp = emps["Sam Okafor"]
+
+        rng = random.Random(42)
+        time_entries = 0
+        d = TIME_ENTRY_START
+        while d <= TIME_ENTRY_END:
+            if d.weekday() < 5:
+                for full, e in emps.items():
+                    if e.status not in ("active", "on_leave"):
+                        continue
+                    if d in approved_days.get(full, set()):
+                        continue
+                    if full == "Sam Okafor" and d == open_day:
+                        continue
+                    in_min = 9 * 60 + rng.randint(-25, 25)
+                    roll = rng.random()
+                    work_h = 9.0 + rng.randint(0, 60) / 60.0 if roll < 0.15 else (
+                        4.0 if roll < 0.23 else 8.0
+                    )
+                    breaks = rng.choice([0, 30, 30, 45, 60])
+                    out_min = in_min + int(work_h * 60 + breaks)
+                    note = rng.choice(TIME_ENTRY_NOTES) if rng.random() < 0.04 else None
+                    db.add(TimeEntry(
+                        employee_id=e.id, work_date=d,
+                        clock_in=time(in_min // 60, in_min % 60),
+                        clock_out=time(out_min // 60 % 24, out_min % 60),
+                        breaks_minutes=breaks, notes=note,
+                    ))
+                    time_entries += 1
+            d += timedelta(days=1)
+
+        db.add(TimeEntry(
+            employee_id=open_emp.id, work_date=open_day,
+            clock_in=time(8, 52), clock_out=None, breaks_minutes=0,
+        ))
+        time_entries += 1
+        await db.commit()
+
         # 7. Deduction rules
         for name, desc, dtype, value, active in DEDUCTION_RULES:
             db.add(DeductionRule(
@@ -310,7 +380,7 @@ async def main() -> None:
             f"[demo-seed] Done: {len(DEPARTMENTS)} departments, {n_emp} employees, "
             f"{len(LEAVE_TYPES)} leave types, {len(LEAVE_BALANCES)} "
             f"balance sets, {len(LEAVE_REQUESTS)} leave requests, "
-            f"{len(DEDUCTION_RULES)} deduction rules, "
+            f"{len(DEDUCTION_RULES)} deduction rules, {time_entries} time entries, "
             f"July run processed ({len(july_entries)} entries), August run draft."
         )
         print(
