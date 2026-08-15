@@ -12,6 +12,8 @@ import AuditLogsPage from "./audit-logs";
 import { PayrollPage } from "./payroll";
 import MyTimePage from "./my-time";
 import AttendancePage from "./attendance";
+import PerformancePage from "./performance";
+import MyReviewsPage from "./my-reviews";
 
 /**
  * Route configuration for the application.
@@ -19,9 +21,10 @@ import AttendancePage from "./attendance";
  * Authenticated routes are wrapped in MainLayout (sidebar) + AuthenticatedRoute
  * guard. Within the layout, role-restricted subtrees mirror the backend's
  * require_role() gates:
- *   - admin+manager: dashboard, employees, org chart, payroll, attendance
+ *   - admin+manager: dashboard, employees, org chart, payroll, attendance,
+ *                    performance reviews
  *   - admin only:    audit log
- *   - everyone:      leave, my home, my time
+ *   - everyone:      leave, my home, my time, my reviews
  * Login is behind PublicOnlyRoute (redirects to the role's landing page when
  * already logged in).
  */
@@ -41,6 +44,7 @@ export const routes: RouteObject[] = [
               { path: "org-chart", element: <OrgChartPage /> },
               { path: "payroll", element: <PayrollPage /> },
               { path: "attendance", element: <AttendancePage /> },
+              { path: "performance", element: <PerformancePage /> },
             ],
           },
           {
@@ -50,6 +54,7 @@ export const routes: RouteObject[] = [
           { path: "leave", element: <LeavePage /> },
           { path: "my-home", element: <MyHomePage /> },
           { path: "my-time", element: <MyTimePage /> },
+          { path: "my-reviews", element: <MyReviewsPage /> },
         ],
       },
     ],

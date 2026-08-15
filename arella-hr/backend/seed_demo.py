@@ -26,7 +26,9 @@ from app.models.employee import Employee
 from app.models.leave_balance import LeaveBalance
 from app.models.leave_request import LeaveRequest
 from app.models.leave_type import LeaveType
+from app.models.notification import Notification
 from app.models.payroll_run import PayrollRun
+from app.models.review import Review, ReviewCycle
 from app.models.time_entry import TimeEntry
 from app.models.user import User, UserRole
 from app.services.payroll import calculate_payroll_for_run
@@ -154,7 +156,9 @@ async def main() -> None:
             text(
                 "TRUNCATE TABLE payroll_entries, payroll_runs, leave_requests, "
                 "leave_balances, time_entries, employees, departments, "
-                "leave_types, deduction_rules, audit_logs RESTART IDENTITY CASCADE"
+                "leave_types, deduction_rules, audit_logs, notifications, "
+                "review_cycles, reviews "
+                "RESTART IDENTITY CASCADE"
             )
         )
         await db.execute(
@@ -350,6 +354,154 @@ async def main() -> None:
         db.add(august)
         await db.commit()
 
+        # 8b. In-app notifications — bell content for the walkthrough.
+        #     Mirrors what the app's own notification service would have
+        #     created from the seeded leave requests and July payroll.
+        net_by_emp = {e.employee_id: float(e.net_pay) for e in july_entries}
+
+        def leave_notif(user_id: int, emp: Employee, ltype_name: str,
+                        start: date, end: date, days: int, reason: str | None,
+                        created: datetime, read_at: datetime | None = None) -> None:
+            db.add(Notification(
+                user_id=user_id, type="leave_requested",
+                title=f"New leave request from {emp.first_name} {emp.last_name}",
+                body=(f"{ltype_name}: {start} to {end} ({days} days)"
+                      + (f"\nReason: {reason}" if reason else "")),
+                link="/leave", created_at=created, read_at=read_at,
+            ))
+
+        def payroll_notif(emp: Employee, created: datetime,
+                          read_at: datetime | None = None) -> None:
+            net = net_by_emp.get(emp.id)
+            db.add(Notification(
+                user_id=emp.user_id, type="payroll_processed",
+                title="Your payroll for 2026-07-01 to 2026-07-31 is ready",
+                body=(f"Your net pay for this period is ${net:,.2f}. "
+                      "Open My Home to view your payslip."
+                      if net is not None else "Open My Home to view your payslip."),
+                link="/my-home", created_at=created, read_at=read_at,
+            ))
+
+        mgr_user = emps["Elena Petrova"]     # manager demo account
+        sam_user = emps["Sam Okafor"]        # employee demo account
+        jordan_user = emps["Jordan Avery"]  # admin demo account
+
+        # Manager: the two pending requests routed to her (Sam and Liam have
+        # no manager with a login account, so the manager/admin fallback
+        # notifies the manager account too).
+        leave_notif(mgr_user.user_id, sam_user, "Annual Leave",
+                    date(2026, 9, 7), date(2026, 9, 11), 5,
+                    "Family trip to Portugal",
+                    datetime(2026, 8, 15, 8, 12, tzinfo=timezone.utc))
+        leave_notif(mgr_user.user_id, emps["Liam Torres"], "Personal Leave",
+                    date(2026, 8, 24), date(2026, 8, 24), 1,
+                    "Moving to a new apartment",
+                    datetime(2026, 8, 14, 16, 45, tzinfo=timezone.utc))
+        # Plus her own July payslip, already opened.
+        payroll_notif(mgr_user, datetime(2026, 8, 1, 9, 5, tzinfo=timezone.utc),
+                      read_at=datetime(2026, 8, 1, 9, 40, tzinfo=timezone.utc))
+
+        # Employee: his July payslip, not opened yet.
+        payroll_notif(sam_user, datetime(2026, 8, 1, 9, 2, tzinfo=timezone.utc))
+
+        # Admin: fallback notifications for manager-less requests + payslip.
+        leave_notif(admin.id, emps["Marcus Webb"], "Sick Leave",
+                    date(2026, 8, 18), date(2026, 8, 19), 2,
+                    "Recovering from the flu",
+                    datetime(2026, 8, 13, 14, 30, tzinfo=timezone.utc))
+        leave_notif(admin.id, sam_user, "Annual Leave",
+                    date(2026, 9, 7), date(2026, 9, 11), 5,
+                    "Family trip to Portugal",
+                    datetime(2026, 8, 15, 8, 12, tzinfo=timezone.utc))
+        payroll_notif(jordan_user, datetime(2026, 8, 1, 9, 3, tzinfo=timezone.utc),
+                      read_at=datetime(2026, 8, 1, 9, 55, tzinfo=timezone.utc))
+        await db.commit()
+
+        # 8c. Performance reviews — one active mid-year cycle with a mix of
+        #     states so the Performance page shows progress at a glance.
+        #     Elena (manager account) authored Aisha's review; the admin
+        #     account authored the rest (its user may review anyone).
+        mid_year = ReviewCycle(
+            name="2026 Mid-Year Review",
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 6, 30),
+            status="active",
+            description="Half-year performance check-in for all active employees.",
+        )
+        db.add(mid_year)
+        await db.commit()
+
+        def make_review(emp_name: str, reviewer_user_id: int, rating: int,
+                        status: str, submitted: datetime | None,
+                        shared: datetime | None, created: datetime,
+                        strengths: str | None = None,
+                        improvements: str | None = None,
+                        goals: str | None = None) -> Review:
+            r = Review(
+                cycle_id=mid_year.id,
+                employee_id=emps[emp_name].id,
+                reviewer_user_id=reviewer_user_id,
+                rating=rating, strengths=strengths, improvements=improvements,
+                goals=goals, status=status,
+                submitted_at=submitted, shared_at=shared,
+                created_at=created, updated_at=created,
+            )
+            db.add(r)
+            return r
+
+        sam_review = make_review(
+            "Sam Okafor", admin.id, 4, "shared",
+            submitted=datetime(2026, 8, 14, 15, 0, tzinfo=timezone.utc),
+            shared=datetime(2026, 8, 14, 15, 30, tzinfo=timezone.utc),
+            created=datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc),
+            strengths="Shipped the leave module on time and owned the API design without prompting.",
+            improvements="Pick up code review earlier in the cycle and document edge cases.",
+            goals="Own the payroll refactor and lead the Q3 on-call rotation.",
+        )
+        make_review(
+            "Liam Torres", admin.id, 3, "submitted",
+            submitted=datetime(2026, 8, 13, 11, 20, tzinfo=timezone.utc),
+            shared=None, created=datetime(2026, 8, 10, 9, 5, tzinfo=timezone.utc),
+            strengths="Fastest ramp in the team; the dashboard KPI work landed cleanly.",
+            improvements="Break features into smaller PRs and pair earlier on tough spikes.",
+            goals="Take ownership of the notification center backlog.",
+        )
+        make_review(
+            "Aisha Bello", emps["Elena Petrova"].user_id, 4, "shared",
+            submitted=datetime(2026, 8, 12, 14, 0, tzinfo=timezone.utc),
+            shared=datetime(2026, 8, 12, 14, 30, tzinfo=timezone.utc),
+            created=datetime(2026, 8, 11, 10, 0, tzinfo=timezone.utc),
+            strengths="The launch content plan performed above target on every channel.",
+            improvements="Share drafts with the team a day earlier for faster feedback.",
+            goals="Mentor one junior writer and lead the Q3 content calendar.",
+        )
+        make_review(
+            "David Park", admin.id, 4, "draft",
+            submitted=None, shared=None,
+            created=datetime(2026, 8, 13, 9, 30, tzinfo=timezone.utc),
+            strengths="Pipeline reporting is now a single source of truth.",
+            improvements="Surface at-risk deals to the manager before quarter close.",
+        )
+        make_review(
+            "Maya Chen", admin.id, 5, "draft",
+            submitted=None, shared=None,
+            created=datetime(2026, 8, 13, 9, 35, tzinfo=timezone.utc),
+            strengths="Set the bar for engineering culture this year; two strong promotions.",
+            goals="Define the 2027 platform architecture with the exec team.",
+        )
+
+        # Sam's bell pings the moment his review was shared (unread).
+        db.add(Notification(
+            user_id=emps["Sam Okafor"].user_id, type="review_shared",
+            title=f"{mid_year.name} — your review is ready",
+            body=(f"Your manager shared your {mid_year.name} review. "
+                  "Open My Reviews to view it."),
+            link="/my-reviews",
+            created_at=datetime(2026, 8, 14, 15, 30, tzinfo=timezone.utc),
+            read_at=None,
+        ))
+        await db.commit()
+
         # 9. Audit trail (most recent first in the UI)
         rows = [
             ("login", "user", None, {"new": {"email": "admin@example.com"}},
@@ -357,6 +509,9 @@ async def main() -> None:
             ("deduction_rule.created", "deduction_rule", None,
              {"new": {"name": "Student Loan Repayment", "value": 50.0}},
              datetime(2026, 8, 14, 16, 20, tzinfo=timezone.utc)),
+            ("review.shared", "review", sam_review.id,
+             {"old": {"status": "submitted"}, "new": {"status": "shared"}},
+             datetime(2026, 8, 14, 15, 30, tzinfo=timezone.utc)),
             ("leave_request.approved", "leave_request", None,
              {"old": {"status": "pending"}, "new": {"status": "approved"}},
              datetime(2026, 8, 14, 9, 42, tzinfo=timezone.utc)),
@@ -381,7 +536,8 @@ async def main() -> None:
             f"{len(LEAVE_TYPES)} leave types, {len(LEAVE_BALANCES)} "
             f"balance sets, {len(LEAVE_REQUESTS)} leave requests, "
             f"{len(DEDUCTION_RULES)} deduction rules, {time_entries} time entries, "
-            f"July run processed ({len(july_entries)} entries), August run draft."
+            f"July run processed ({len(july_entries)} entries), August run draft, "
+            f"8 in-app notifications, 1 review cycle with 5 reviews."
         )
         print(
             "[demo-seed] Login accounts: admin@example.com (password from "

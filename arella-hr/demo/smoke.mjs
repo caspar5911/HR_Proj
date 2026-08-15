@@ -33,6 +33,14 @@ async function main() {
   const nav = (label) =>
     page.locator("aside nav").getByText(label, { exact: true }).click();
 
+  const expectCount = async (locator, n) => {
+    for (let i = 0; i < 40; i++) {
+      if ((await locator.count()) === n) return;
+      await sleep(250);
+    }
+    throw new Error(`expected ${n} element(s), found ${await locator.count()}`);
+  };
+
   const filterNoise = (list) =>
     list.filter((t) => !/favicon|React Router Future|useLayoutEffect|act\(|Cannot read prop/i.test(t));
 
@@ -50,6 +58,18 @@ async function main() {
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
     await sleep(2500); // let KPIs/charts settle
+  });
+
+  await step("notification bell shows badge and mark-all-read", async () => {
+    const bell = page.locator('button[title="Notifications"]');
+    await bell.waitFor();
+    const badge = page.locator('button[title="Notifications"] span.bg-rose-500');
+    await expectCount(badge, 1); // admin is seeded with 2 unread
+    await bell.click();
+    await page.getByText("New leave request from").first().waitFor();
+    await page.getByRole("button", { name: "Mark all read" }).click();
+    await badge.waitFor({ state: "detached" });
+    await page.keyboard.press("Escape");
   });
 
   await step("employee list renders", async () => {
@@ -108,6 +128,15 @@ async function main() {
     await page.getByText("Team Members").waitFor();
   });
 
+  await step("performance page shows seeded cycle + 5 reviews", async () => {
+    await nav("Performance");
+    await page
+      .getByRole("heading", { name: "Performance Reviews", level: 1 })
+      .waitFor();
+    await page.getByText("2026 Mid-Year Review").first().waitFor();
+    await expectCount(page.locator("table tbody tr"), 5);
+  });
+
   // ── Employee session ─────────────────────────────────────────────────────
   console.log("\n[smoke] employee session");
 
@@ -125,6 +154,17 @@ async function main() {
     await sleep(2000);
   });
 
+  await step("employee bell opens payslip notification", async () => {
+    const bell = page.locator('button[title="Notifications"]');
+    await bell.click();
+    await page
+      .getByText("Your payroll for 2026-07-01 to 2026-07-31 is ready")
+      .waitFor();
+    // Clicking it marks it read and follows its link back to My Home.
+    await page.getByText("Open My Home to view your payslip.").click();
+    await page.getByText("Leave balances").first().waitFor();
+  });
+
   await step("my-home payslips section", async () => {
     const viewBtn = page.getByRole("button", { name: /Payslip/ }).first();
     if (await viewBtn.count()) {
@@ -140,6 +180,15 @@ async function main() {
     await nav("My Time");
     await page.getByRole("heading", { name: "My Time", level: 1 }).waitFor();
     await page.getByText("Total Hours").waitFor();
+  });
+
+  await step("my-reviews shows shared review", async () => {
+    await nav("My Reviews");
+    await page.getByRole("heading", { name: "My Reviews", level: 1 }).waitFor();
+    // Seeded: Sam has one shared review in the 2026 Mid-Year cycle.
+    await page.getByText("2026 Mid-Year Review").first().waitFor();
+    await page.getByText("Review by").first().waitFor();
+    await page.getByText("Shared", { exact: true }).first().waitFor();
   });
 
   await step("attendance hidden from employee", async () => {

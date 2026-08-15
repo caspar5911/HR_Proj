@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  Award,
   CalendarCheck,
   CalendarDays,
   Clock,
@@ -13,6 +14,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { NotificationBell } from "@/components/NotificationBell";
 
 /**
  * Navigation is role-aware: managers/admins get the full operations menu,
@@ -25,6 +27,7 @@ const STAFF_NAV = [
   { to: "/leave", label: "Leave", icon: CalendarDays },
   { to: "/payroll", label: "Payroll", icon: Wallet },
   { to: "/attendance", label: "Attendance", icon: CalendarCheck },
+  { to: "/performance", label: "Performance", icon: Award },
   { to: "/my-home", label: "My Home", icon: Home },
   { to: "/my-time", label: "My Time", icon: Clock },
   { to: "/audit-logs", label: "Audit Log", icon: FileClock },
@@ -34,6 +37,7 @@ const EMPLOYEE_NAV = [
   { to: "/my-home", label: "My Home", icon: Home, end: true },
   { to: "/leave", label: "My Leave", icon: CalendarDays },
   { to: "/my-time", label: "My Time", icon: Clock },
+  { to: "/my-reviews", label: "My Reviews", icon: Award },
 ];
 
 export function MainLayout() {
@@ -102,8 +106,13 @@ export function MainLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-x-auto">
-        <Outlet />
+      <main className="flex-1 min-w-0 flex flex-col overflow-x-auto">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-end border-b border-gray-200 bg-white/95 px-6 backdrop-blur">
+          <NotificationBell />
+        </header>
+        <div className="flex-1">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

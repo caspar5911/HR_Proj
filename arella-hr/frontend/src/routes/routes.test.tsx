@@ -20,7 +20,7 @@ describe("route configuration", () => {
     const layout = routes[0].children?.[0];
     const pages = layout!.children ?? [];
 
-    // [0] admin+manager subtree, [1] admin-only subtree, [2] leave, [3] my-home
+    // [0] admin+manager subtree, [1] admin-only subtree, then open routes
     const staffSubtree = pages[0];
     const adminSubtree = pages[1];
     const openRoutes = pages.slice(2);
@@ -37,13 +37,14 @@ describe("route configuration", () => {
       "org-chart",
       "payroll",
       "attendance",
+      "performance",
     ]);
 
     const adminPaths = (adminSubtree.children ?? []).map((p) => p.path);
     expect(adminPaths).toEqual(["audit-logs"]);
 
     const openPaths = openRoutes.map((p) => p.path);
-    expect(openPaths).toEqual(["leave", "my-home", "my-time"]);
+    expect(openPaths).toEqual(["leave", "my-home", "my-time", "my-reviews"]);
 
     for (const p of pages) {
       expect(React.isValidElement(p.element)).toBe(true);
