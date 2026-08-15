@@ -1,0 +1,20 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ headless: true });
+const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+p.setDefaultTimeout(15000);
+p.on("console", (m) => console.log("[console]", m.type(), m.text().slice(0, 200)));
+p.on("response", (r) => {
+  if (r.url().includes("/api/")) console.log("[net]", r.status(), r.url().replace("http://localhost:5173", ""), "→", r.headers()["location"] ?? "");
+});
+await p.goto("http://localhost:5173/#/login");
+await p.locator("#email").fill("admin@example.com");
+await p.locator("#password").fill("admin123");
+await p.getByRole("button", { name: "Sign In" }).click();
+await p.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
+await p.locator("aside nav").getByText("Payroll", { exact: true }).click();
+await p.waitForTimeout(5000);
+const rows = await p.evaluate(() => Array.from(document.querySelectorAll("tbody tr")).map(tr => tr.innerText.replace(/\n/g, " | ")));
+console.log("ROWS:\n" + rows.join("\n"));
+const bodyText = await p.evaluate(() => document.querySelector("main")?.innerText.slice(0, 600));
+console.log("MAIN TEXT:\n" + bodyText);
+await b.close();

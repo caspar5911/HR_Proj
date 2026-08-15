@@ -1,0 +1,20 @@
+import { chromium } from "playwright";
+const b = await chromium.launch({ headless: true });
+const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+p.setDefaultTimeout(15000);
+p.on("console", (m) => console.log("[console]", m.type(), m.text().slice(0, 200)));
+p.on("response", (r) => {
+  if (r.url().includes("/api/")) console.log("[net]", r.status(), r.url().replace("http://localhost:5173", ""));
+});
+await p.goto("http://localhost:5173/#/login");
+await p.locator("#email").fill("admin@example.com");
+await p.locator("#password").fill("admin123");
+await p.getByRole("button", { name: "Sign In" }).click();
+await p.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
+await p.locator("aside nav").getByText("Leave", { exact: true }).click();
+await p.waitForTimeout(2500);
+const mainText = await p.evaluate(() => document.querySelector("main")?.innerText.slice(0, 800));
+console.log("MAIN TEXT:\n" + mainText);
+const bodyErrors = await p.evaluate(() => (document.querySelector("main")?.innerText.match(/error|failed/i) || []).join(","));
+console.log("ERROR MARKERS:", bodyErrors || "none");
+await b.close();
