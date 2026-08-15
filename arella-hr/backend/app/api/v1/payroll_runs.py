@@ -23,6 +23,9 @@ from app.schemas.payroll_run import (
 )
 from app.services.audit import diff_changes, record_audit
 from app.services.email import notify_payroll_processed
+from app.services.notifications import (
+    notify_payroll_processed as notify_payroll_processed_inapp,
+)
 from app.utils.errors import NotFoundError, ValidationError
 
 router = APIRouter()
@@ -292,6 +295,7 @@ async def api_process_payroll_run(
         changes={"new": {"status": "processed"}},
     )
     await notify_payroll_processed(db, payroll_run, entries)
+    await notify_payroll_processed_inapp(db, payroll_run, entries)
     return _build_run_out(payroll_run)
 
 

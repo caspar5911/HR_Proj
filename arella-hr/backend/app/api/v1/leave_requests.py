@@ -28,6 +28,10 @@ from app.schemas.leave_request import (
 )
 from app.services.audit import record_audit
 from app.services.email import notify_leave_decided, notify_leave_requested
+from app.services.notifications import (
+    notify_leave_decided as notify_leave_decided_inapp,
+    notify_leave_requested as notify_leave_requested_inapp,
+)
 from app.utils.errors import NotFoundError, PermissionDeniedError, ValidationError
 
 router = APIRouter()
@@ -186,6 +190,7 @@ async def api_create_leave_request(
 
     if employee:
         await notify_leave_requested(db, req, employee)
+        await notify_leave_requested_inapp(db, req, employee)
 
     return _build_out(req)
 
@@ -239,6 +244,7 @@ async def api_approve_leave_request(
     )
 
     await notify_leave_decided(db, req)
+    await notify_leave_decided_inapp(db, req)
 
     return _build_out(req)
 
@@ -269,6 +275,7 @@ async def api_reject_leave_request(
     )
 
     await notify_leave_decided(db, req)
+    await notify_leave_decided_inapp(db, req)
 
     return _build_out(req)
 
