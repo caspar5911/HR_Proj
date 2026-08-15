@@ -124,7 +124,7 @@ async def approve_leave_request(
     )
     balance = balance.scalar_one_or_none()
     if balance:
-        balance.used = round(balance.used + request.days_requested, 1)
+        balance.used = round(float(balance.used) + float(request.days_requested), 1)
         await db.commit()
     else:
         # No balance record yet — just commit the request
@@ -169,7 +169,7 @@ async def cancel_leave_request(
         )
         balance = balance.scalar_one_or_none()
         if balance:
-            balance.used = round(max(0.0, balance.used - request.days_requested), 1)
+            balance.used = round(max(0.0, float(balance.used) - float(request.days_requested)), 1)
 
     await db.delete(request)
     await db.commit()

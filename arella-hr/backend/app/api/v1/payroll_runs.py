@@ -79,7 +79,7 @@ async def _resolve_employee_name(db: AsyncSession, emp_id: int) -> str:
 
 
 @router.get(
-    "/",
+    "",
     response_model=PaginatedPayrollRunResponse,
     dependencies=[Depends(get_current_user)],
 )
@@ -168,7 +168,7 @@ async def api_list_payroll_entries(
 
 
 @router.post(
-    "/",
+    "",
     response_model=PayrollRunOut,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(UserRole.ADMIN, UserRole.MANAGER))],

@@ -39,7 +39,7 @@ def _build_out(rule):
 
 
 @router.get(
-    "/",
+    "",
     response_model=PaginatedDeductionRuleResponse,
     dependencies=[Depends(get_current_user)],
 )
@@ -88,7 +88,7 @@ async def api_get_deduction_rule(
 
 
 @router.post(
-    "/",
+    "",
     response_model=DeductionRuleOut,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role(UserRole.ADMIN))],

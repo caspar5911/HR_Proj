@@ -84,7 +84,10 @@ async def list_employees(
     total = count_result.scalar() or 0
 
     # ── paginated results ────────────────────────────────────────────────
-    stmt = select(Employee)
+    # Eager-load the manager relationship: _build_out reads emp.manager,
+    # and lazy loads on an async session raise MissingGreenlet whenever the
+    # manager's row is not already in this result's identity map.
+    stmt = select(Employee).options(selectinload(Employee.manager))
     if conditions:
         stmt = stmt.where(and_(*conditions))
     stmt = stmt.order_by(Employee.created_at.desc())

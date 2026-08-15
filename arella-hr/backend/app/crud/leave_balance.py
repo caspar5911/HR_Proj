@@ -68,7 +68,7 @@ async def add_used_days(
     days: float,
 ) -> LeaveBalance:
     """Add days to the used count (called when a request is approved)."""
-    balance.used = round(balance.used + days, 1)
+    balance.used = round(float(balance.used) + float(days), 1)
     await db.commit()
     await db.refresh(balance)
     return balance
@@ -80,7 +80,7 @@ async def remove_used_days(
     days: float,
 ) -> LeaveBalance:
     """Remove days from the used count (called when a request is cancelled/rejected)."""
-    balance.used = round(max(0.0, balance.used - days), 1)
+    balance.used = round(max(0.0, float(balance.used) - float(days)), 1)
     await db.commit()
     await db.refresh(balance)
     return balance
