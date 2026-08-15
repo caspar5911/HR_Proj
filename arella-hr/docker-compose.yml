@@ -4,8 +4,8 @@
 #   + pgAdmin:       docker compose --profile tools up --build
 #   Production:      docker compose --profile prod up --build
 #
-#   After the first start (and after any new migration):
-#     docker compose exec backend alembic upgrade head
+#   Database migrations are applied automatically when the backend starts
+#   (alembic upgrade head — see backend/app/main.py). No manual step needed.
 #
 # All secrets/ports are overridable via a .env file next to this compose
 # file (never commit real values — the defaults below are dev-only):

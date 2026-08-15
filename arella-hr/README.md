@@ -22,21 +22,41 @@ A full-featured HR management system for small and medium businesses (50–500 e
 - Docker & Docker Compose
 - Node.js 20+ and Python 3.12+ (only for local, non-Docker dev)
 
-### Running with Docker
+### One-action start
 
 ```bash
 cd arella-hr
-docker compose up --build
-
-# Apply database migrations (first start, and after every new migration)
-docker compose exec backend alembic upgrade head
+./start.sh          # dev stack (db + backend + hot-reload frontend)
+./start.sh prod     # production stack (nginx frontend + backend + db)
 ```
 
-- Frontend (dev, hot reload): http://localhost:5173
-- Backend API docs: http://localhost:8000/api/docs
-- Health check: http://localhost:8000/health
+The script builds the images, starts everything in the background, waits for the
+backend to be healthy, then prints the URLs and the first-login credentials.
+The backend applies database migrations and creates the admin account
+automatically when it starts, so there are no follow-up steps. It stops cleanly
+with `docker compose down`.
 
-With pgAdmin:
+To run it without the wrapper, the equivalent is:
+
+```bash
+docker compose up --build            # dev
+docker compose --profile prod up --build   # production
+```
+
+Typical URLs (dev): app on http://localhost:5173, API docs on
+http://localhost:8000/api/docs, health on http://localhost:8000/health.
+
+**First login:** `admin@example.com` / `admin123`
+(configurable via `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` — see below).
+
+> **Port conflict?** If something else on your machine already uses :8000 or
+> :3000 (e.g. an LLM server), don't kill it — create a `.env` file next to
+> `docker-compose.yml` and override `BACKEND_PORT` / `FRONTEND_PROD_PORT`
+> (see the table below). `start.sh` picks up those ports automatically.
+
+### Other one-command setups
+
+pgAdmin for the database:
 
 ```bash
 docker compose --profile tools up --build   # pgAdmin on http://localhost:5050
@@ -65,12 +85,11 @@ All compose variables default to dev-only values and can be overridden via a `.e
 ### Running Locally
 
 ```bash
-# Backend
+# Backend — migrations + admin seed run automatically on startup
 cd arella-hr/backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env        # edit if needed
-alembic upgrade head
 uvicorn app.main:app --reload
 
 # Frontend (new terminal)
@@ -103,9 +122,19 @@ docker compose exec backend python -m pytest
 
 ## Migrations
 
+Migrations are applied **automatically when the backend starts** (`alembic upgrade head`,
+with retries while the database boots). You only need to create new ones after changing
+the models:
+
 ```bash
-alembic upgrade head                            # apply
-alembic revision --autogenerate -m "description" # create after model changes
+alembic revision --autogenerate -m "description"  # create after model changes
+```
+
+Manual application is still available if you ever want to run it explicitly:
+
+```bash
+alembic upgrade head
+# or: docker compose exec backend alembic upgrade head
 ```
 
 ## Security Notes
@@ -121,7 +150,7 @@ alembic revision --autogenerate -m "description" # create after model changes
 arella-hr/
 ├── backend/              # FastAPI backend
 │   ├── app/              # Application code
-│   │   ├── main.py       # App entry point (app factory, /health)
+│   │   ├── main.py       # App entry point (lifespan: auto-migrations + admin seed)
 │   │   ├── config.py     # Settings (env-driven)
 │   │   ├── database.py   # DB connection
 │   │   ├── models/       # SQLAlchemy models
@@ -146,5 +175,7 @@ arella-hr/
 │   ├── nginx.conf        # SPA fallback + /api proxy (prod stage)
 │   └── .dockerignore
 ├── docker-compose.yml    # dev / prod / tools profiles
+├── start.sh              # One-action launcher (build → start → wait → print URLs)
+├── .env                  # Local overrides (ports etc.) — created for this machine
 └── README.md
 ```
