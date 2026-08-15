@@ -1,0 +1,82 @@
+# Builds the frontend and deploys it to GitHub Pages on every push to main.
+#
+#   Pages URL: https://caspar5911.github.io/HR_Proj/
+#
+#   Setup (one time, in the GitHub web UI):
+#     Settings → Pages → Build and deployment → Source: "GitHub Actions"
+#
+#   The Pages app is static, so it calls the FastAPI backend over the network.
+#   1. Once your backend is hosted publicly, set VITE_API_URL below to its
+#      API base URL (including /api/v1), e.g.
+#        VITE_API_URL: https://your-backend.up.railway.app/api/v1
+#      Until then leave it empty — the build will use the same-origin
+#      relative path and API calls will simply fail.
+#   2. On the backend, allow the Pages origin via its CORS_ORIGINS setting:
+#        CORS_ORIGINS=https://caspar5911.github.io
+
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "arella-hr/frontend/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at the same time; a newer push waits for the older.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  # Base path the site is served from — must match the repo name,
+  # with a leading and trailing slash.
+  VITE_BASE_PATH: /HR_Proj/
+  # Full API base URL, including the /api/v1 prefix (see header comment).
+  VITE_API_URL: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: arella-hr/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: arella-hr/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build (type-checks + bundles)
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: arella-hr/frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

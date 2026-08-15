@@ -38,6 +38,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
+      # Comma-separated allowed origins (GitHub Pages deployment, …)
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       DEBUG: "false"
     depends_on:
       db:

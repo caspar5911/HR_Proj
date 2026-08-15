@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Console-mocked transport for now; toggle off to suppress all notifications.
     EMAIL_ENABLED: bool = True
 
+    # ── CORS ───────────────────────────────────────────────────────────────
+    # Comma-separated list of browser origins allowed to call the API
+    # (the dev frontend, a GitHub Pages deployment, …). Same-origin
+    # deployments (nginx proxy) need no entry.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # ── Seed (dev convenience) ───────────────────────────────────────────────
     SEED_ADMIN_EMAIL: str = "admin@example.com"
     SEED_ADMIN_PASSWORD: str = "admin123"

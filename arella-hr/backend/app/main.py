@@ -102,10 +102,10 @@ def create_app() -> FastAPI:
     # Structured error responses — every error carries a machine-readable code.
     register_exception_handlers(app)
 
-    # CORS — allow the dev frontend
+    # CORS — allow configured origins (dev frontend, GitHub Pages, …)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

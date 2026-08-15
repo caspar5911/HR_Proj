@@ -70,6 +70,31 @@ docker compose --profile prod up --build
 
 > The dev and production frontends can run side by side on different ports.
 
+### Deploying the frontend to GitHub Pages
+
+The frontend can be deployed as a static site to GitHub Pages via a GitHub
+Actions workflow (`.github/workflows/deploy-pages.yml`). It builds on every
+push to `main` and deploys to:
+
+```
+https://caspar5911.github.io/HR_Proj/
+```
+
+**One-time setup (in the GitHub web UI):**
+Settings → Pages → *Build and deployment* → Source: **GitHub Actions**.
+
+**Connecting the backend.** Pages is static hosting, so the app calls the
+FastAPI backend over the network. Two settings point them at each other:
+
+| Where | Setting | Value |
+|---|---|---|
+| `.github/workflows/deploy-pages.yml` | `VITE_API_URL` | your backend's API base URL, incl. `/api/v1` (e.g. `https://your-backend.up.railway.app/api/v1`) |
+| backend (`config.py` / `.env` / compose) | `CORS_ORIGINS` | the Pages origin, e.g. `https://caspar5911.github.io` |
+
+The app uses hash-based routing (`/#/employees`) so refreshes and deep links
+work on static hosting; it falls back to the same-origin `/api/v1` when
+`VITE_API_URL` is unset (dev / Docker / nginx deployments).
+
 ### Secrets & configuration
 
 All compose variables default to dev-only values and can be overridden via a `.env` file next to `docker-compose.yml` (never commit real values):
@@ -178,4 +203,7 @@ arella-hr/
 ├── start.sh              # One-action launcher (build → start → wait → print URLs)
 ├── .env                  # Local overrides (ports etc.) — created for this machine
 └── README.md
+
+# At the git root (one level above arella-hr/):
+└── .github/workflows/deploy-pages.yml   # GitHub Actions — deploys frontend to Pages
 ```

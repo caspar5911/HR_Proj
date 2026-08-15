@@ -9,7 +9,15 @@ import path from "path";
 //    is NOT the backend, so the service name must be used instead.
 const apiProxyTarget = process.env.API_PROXY_TARGET || "http://localhost:8000";
 
+// Public base path the built assets are served from.
+//  - Dev / Docker / nginx: "/" (default)
+//  - GitHub Pages project site: "/<repo>/", injected via VITE_BASE_PATH
+//    (see .github/workflows/deploy-pages.yml). Vite rewrites every emitted
+//    asset URL with this prefix so the build works from a sub-path.
+const base = process.env.VITE_BASE_PATH || "/";
+
 export default defineConfig({
+  base,
   plugins: [react()],
   resolve: {
     alias: {
