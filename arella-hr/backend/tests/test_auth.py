@@ -89,6 +89,56 @@ async def test_refresh_rejects_garbage_token(client, db):
     assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
 
 
+# ── revocation & rotation ───────────────────────────────────────────────────
+
+
+async def test_refresh_token_is_single_use(client, db):
+    """A refresh token is revoked the moment it is used (rotation)."""
+    await seed_user(db, email="user@test.com")
+    tokens = await login(client, "user@test.com")
+    original = tokens["refresh_token"]
+
+    # First use rotates to a fresh pair.
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": original})
+    assert resp.status_code == 200
+    rotated = resp.json()["refresh_token"]
+    assert rotated != original
+
+    # Replaying the original must now fail.
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": original})
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+    # The rotated successor still works.
+    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": rotated})
+    assert resp.status_code == 200
+
+
+async def test_logout_revokes_presented_refresh_token(client, db):
+    """Logout carrying the refresh token revokes it immediately."""
+    await seed_user(db, email="user@test.com")
+    tokens = await login(client, "user@test.com")
+
+    resp = await client.post(
+        f"{API}/auth/logout", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert resp.status_code == 200
+
+    # The revoked token can no longer be refreshed.
+    resp = await client.post(
+        f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]}
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+
+
+async def test_logout_empty_body_still_acknowledges(client, db):
+    """A body-less logout (old behaviour) still gets a 200 acknowledgement."""
+    resp = await client.post(f"{API}/auth/logout", json={})
+    assert resp.status_code == 200
+    assert "message" in resp.json()
+
+
 # ── me ──────────────────────────────────────────────────────────────────────
 
 
@@ -143,9 +193,12 @@ async def test_login_rate_limit_blocks_after_10_attempts(client, db):
 async def test_refresh_rate_limit_blocks_after_20_attempts(client, db):
     await seed_user(db, email="user@test.com")
     tokens = await login(client, "user@test.com")
+    # Rotate the token on each call — refresh is now single-use, so the same
+    # token would be revoked after its first use.
     for _ in range(20):
         resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
+        tokens["refresh_token"] = resp.json()["refresh_token"]
     resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 429
     assert resp.json()["detail"]["code"] == "RATE_LIMITED"

@@ -11,9 +11,11 @@ from app.middleware.auth import (
     get_current_user,
     create_access_token,
     create_refresh_token,
+    verify_token_payload,
 )
 from app.middleware.rate_limit import limit_login, limit_refresh
-from app.schemas.auth import LoginRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginRequest, LogoutRequest, TokenResponse, UserOut
+from app.services.token_revocation import REVOKED_REFRESH_TOKENS
 from app.models.user import User
 
 router = APIRouter()
@@ -40,12 +42,21 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)) -
 
 @router.post("/refresh", response_model=TokenResponse, dependencies=[Depends(limit_refresh)])
 async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)) -> Any:
-    """Exchange a refresh token for a new access token pair."""
-    from app.middleware.auth import verify_token_payload
+    """Exchange a refresh token for a new access token pair.
 
+    Rotation: the presented token is revoked the moment it is used, so a
+    captured refresh token can be replayed at most once.
+    """
     payload = verify_token_payload(refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    jti = payload.get("jti")
+    if REVOKED_REFRESH_TOKENS.is_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+        )
 
     subject = payload.get("data") or {}
     if not subject.get("sub"):
@@ -56,6 +67,9 @@ async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)) -> Any
 
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Rotate: invalidate the presented token before handing out its successor.
+    REVOKED_REFRESH_TOKENS.revoke(jti, payload.get("exp", 0))
 
     new_access = create_access_token({"sub": str(user.id), "role": user.role})
     new_refresh = create_refresh_token({"sub": str(user.id), "role": user.role})
@@ -75,8 +89,19 @@ async def me(current_user: User = Depends(get_current_user)) -> Any:
 
 
 @router.post("/logout")
-async def logout() -> dict:
-    """Client-side logout endpoint (stateless JWT — no server invalidation needed)."""
+async def logout(body: LogoutRequest | None = None) -> dict:
+    """Acknowledge logout and, when offered, revoke the caller's refresh token.
+
+    JWTs are stateless, so a plain ``POST /logout`` (no body) still just
+    acknowledges. When the client sends its refresh token, the server revokes
+    it immediately so it cannot be replayed after logout. The endpoint stays
+    unauthenticated on purpose: revoking a token you are handed is safe, and
+    it keeps the call working even once the access token has expired.
+    """
+    if body and body.refresh_token:
+        payload = verify_token_payload(body.refresh_token)
+        if payload and payload.get("type") == "refresh":
+            REVOKED_REFRESH_TOKENS.revoke(payload.get("jti"), payload.get("exp", 0))
     return {"message": "Logged out successfully"}
 
 

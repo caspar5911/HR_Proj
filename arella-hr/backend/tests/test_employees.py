@@ -1,8 +1,19 @@
 """Tests for the /employees endpoints: CRUD, filters, roles, audit trail."""
 
 import pytest
+from sqlalchemy import select
 
-from conftest import API, auth_headers, make_tokens, seed_employee
+from app.models.user import User
+
+from conftest import (
+    API,
+    TEST_PASSWORD,
+    auth_headers,
+    login,
+    make_tokens,
+    seed_employee,
+    seed_user,
+)
 
 BASE = f"{API}/employees"
 
@@ -123,6 +134,62 @@ async def test_list_employees_requires_auth(client, db):
     assert resp.status_code == 401
 
 
+# ── role scoping (self-service vs. directory) ───────────────────────────────
+
+
+async def test_employee_list_scoped_to_own_record(client, db):
+    """A plain employee sees only their own record in the directory."""
+    me_user = await seed_user(db, email="me@test.com", role="employee")
+    other_user = await seed_user(db, email="other@test.com", role="employee")
+    my_record = await seed_employee(db, first_name="Me", email="me-emp@acme.co", user=me_user)
+    await seed_employee(db, first_name="Other", email="other-emp@acme.co", user=other_user)
+
+    tokens = await login(client, "me@test.com")
+    resp = await client.get(BASE, headers=auth_headers(tokens["access_token"]))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == my_record.id
+    assert body["items"][0]["email"] == "me-emp@acme.co"
+
+
+async def test_employee_cannot_read_other_employee(client, db):
+    me_user = await seed_user(db, email="me@test.com", role="employee")
+    other_user = await seed_user(db, email="other@test.com", role="employee")
+    await seed_employee(db, email="me-emp@acme.co", user=me_user)
+    other_record = await seed_employee(db, email="other-emp@acme.co", user=other_user)
+
+    tokens = await login(client, "me@test.com")
+    resp = await client.get(
+        f"{BASE}/{other_record.id}", headers=auth_headers(tokens["access_token"])
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "PERMISSION_DENIED"
+
+
+async def test_employee_can_read_own_record(client, db):
+    me_user = await seed_user(db, email="me@test.com", role="employee")
+    my_record = await seed_employee(db, email="me-emp@acme.co", user=me_user)
+
+    tokens = await login(client, "me@test.com")
+    resp = await client.get(f"{BASE}/{my_record.id}", headers=auth_headers(tokens["access_token"]))
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "me-emp@acme.co"
+
+
+async def test_org_tree_forbidden_for_employee(client, db):
+    tokens = await make_tokens(client, db)
+    resp = await client.get(f"{BASE}/org-tree", headers=auth_headers(tokens["employee"]))
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "PERMISSION_DENIED"
+
+
+async def test_org_tree_allowed_for_manager(client, db):
+    tokens = await make_tokens(client, db)
+    resp = await client.get(f"{BASE}/org-tree", headers=auth_headers(tokens["manager"]))
+    assert resp.status_code == 200
+
+
 # ── detail / update ──────────────────────────────────────────────────────────
 
 
@@ -199,6 +266,58 @@ async def test_delete_employee(client, db):
 
     resp = await client.get(f"{BASE}/{emp.id}", headers=auth_headers(tokens["admin"]))
     assert resp.status_code == 404
+
+
+# ── offboarding: keep the linked login account in line ──────────────────────
+
+
+async def _linked_user_is_active(db, user_id: int) -> bool:
+    result = await db.execute(select(User).where(User.id == user_id))
+    return bool(result.scalar_one().is_active)
+
+
+async def test_deactivate_employee_disables_linked_account(client, db):
+    """Deactivating an employee must disable their login account too."""
+    leaver = await seed_user(db, email="leaver@test.com", role="employee")
+    emp = await seed_employee(db, first_name="Lea", email="lea@acme.co", user=leaver)
+    tokens = await make_tokens(client, db)
+
+    resp = await client.patch(
+        f"{BASE}/{emp.id}/deactivate", headers=auth_headers(tokens["admin"])
+    )
+    assert resp.status_code == 200
+
+    assert await _linked_user_is_active(db, leaver.id) is False
+    # ...so it can no longer authenticate.
+    denied = await client.post(
+        f"{API}/auth/login", json={"email": "leaver@test.com", "password": TEST_PASSWORD}
+    )
+    assert denied.status_code == 403
+
+
+async def test_restore_employee_reenables_linked_account(client, db):
+    leaver = await seed_user(db, email="leaver@test.com", role="employee")
+    emp = await seed_employee(db, first_name="Lea", email="lea@acme.co", user=leaver)
+    tokens = await make_tokens(client, db)
+
+    await client.patch(f"{BASE}/{emp.id}/deactivate", headers=auth_headers(tokens["admin"]))
+    assert await _linked_user_is_active(db, leaver.id) is False
+
+    resp = await client.patch(
+        f"{BASE}/{emp.id}/restore", headers=auth_headers(tokens["admin"])
+    )
+    assert resp.status_code == 200
+    assert await _linked_user_is_active(db, leaver.id) is True
+
+
+async def test_delete_employee_disables_linked_account(client, db):
+    leaver = await seed_user(db, email="leaver@test.com", role="employee")
+    emp = await seed_employee(db, first_name="Lea", email="lea@acme.co", user=leaver)
+    tokens = await make_tokens(client, db)
+
+    resp = await client.delete(f"{BASE}/{emp.id}", headers=auth_headers(tokens["admin"]))
+    assert resp.status_code == 204
+    assert await _linked_user_is_active(db, leaver.id) is False
 
 
 # ── audit trail ──────────────────────────────────────────────────────────────

@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     SEED_ADMIN_EMAIL: str = "admin@example.com"
     SEED_ADMIN_PASSWORD: str = "admin123"
 
+    # ── Rate limiting ───────────────────────────────────────────────────────
+    # When the app sits behind a reverse proxy / load balancer that rewrites
+    # X-Forwarded-For, set this to true so rate limits key on the *real*
+    # client IP instead of the proxy's own address (which would be shared by
+    # every visitor and cause mass 429s). Leave false when the proxy does NOT
+    # append X-Forwarded-For, otherwise a client can spoof the header to
+    # bypass the limit.
+    TRUST_PROXY_HEADERS: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

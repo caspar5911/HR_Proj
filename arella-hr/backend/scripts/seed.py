@@ -43,7 +43,9 @@ async def seed(db: AsyncSession) -> None:
     await db.commit()
     await db.refresh(admin)
 
-    print(f"[seed] Created superadmin — email: {admin.email}  password: {settings.SEED_ADMIN_PASSWORD}")
+    # Never print the password — it belongs in logs, deploy scripts, and
+    # screenshots. It is already available via the SEED_ADMIN_PASSWORD env var.
+    print(f"[seed] Created superadmin — email: {admin.email}  password: <from SEED_ADMIN_PASSWORD env var>")
 
 
 async def main() -> None:

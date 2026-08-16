@@ -29,9 +29,20 @@ def create_access_token(subject: dict, expires_delta: timedelta | None = None) -
 
 
 def create_refresh_token(subject: dict, expires_delta: timedelta | None = None) -> str:
-    """Create a signed JWT refresh token (default expiry: 7 days)."""
+    """Create a signed JWT refresh token (default expiry: 7 days).
+
+    Carries a unique ``jti`` so individual tokens can be revoked later
+    (logout / rotation) — see ``app.services.token_revocation``.
+    """
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
-    payload = {"exp": expire, "iat": datetime.now(timezone.utc), "data": subject, "type": "refresh"}
+    now = datetime.now(timezone.utc)
+    payload = {
+        "exp": expire,
+        "iat": now,
+        "data": subject,
+        "type": "refresh",
+        "jti": secrets.token_hex(16),
+    }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 

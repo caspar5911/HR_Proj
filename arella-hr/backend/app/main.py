@@ -30,6 +30,30 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 MIGRATION_RETRIES = 15
 MIGRATION_RETRY_DELAY_S = 2.0
 
+# Out-of-the-box secrets shipped in the defaults. The one-action local stack
+# relies on these, so their presence is a *warning*, never a hard failure.
+_DEFAULT_SECRET_KEY = "change-me-in-production"
+_DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def _warn_on_default_secrets() -> None:
+    """Log a prominent warning for every well-known secret still in use.
+
+    JWTs signed with the default SECRET_KEY can be forged by anyone who reads
+    this repo; a default superadmin password is a standing open backdoor.
+    Production deployments must override both via environment variables.
+    """
+    if settings.SECRET_KEY == _DEFAULT_SECRET_KEY:
+        logger.warning(
+            "SECURITY: SECRET_KEY is still the built-in default — set the "
+            "SECRET_KEY env var to a long random value before deploying."
+        )
+    if settings.SEED_ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD:
+        logger.warning(
+            "SECURITY: SEED_ADMIN_PASSWORD is still the built-in default "
+            "(admin123) — set SEED_ADMIN_PASSWORD before deploying."
+        )
+
 
 def _upgrade_to_head() -> None:
     """Run ``alembic upgrade head`` synchronously.
@@ -83,6 +107,7 @@ async def _seed_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle: migrations + seed admin before accepting requests."""
+    _warn_on_default_secrets()
     await _run_migrations()
     await _seed_admin()
     yield

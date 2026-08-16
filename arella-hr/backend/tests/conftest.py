@@ -17,6 +17,7 @@ from app.database import get_db
 from app.main import app
 from app.middleware import rate_limit
 from app.models import Base
+from app.services import token_revocation
 from app.models.employee import Employee
 from app.models.leave_balance import LeaveBalance
 from app.models.leave_type import LeaveType
@@ -44,6 +45,12 @@ def _reset_rate_limiters():
     rate_limit.LOGIN_LIMITER._hits.clear()
     rate_limit.REFRESH_LIMITER._hits.clear()
     rate_limit.REGISTER_LIMITER._hits.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_token_revocations():
+    """Empty the refresh-token revocation store so tests start clean."""
+    token_revocation.REVOKED_REFRESH_TOKENS.clear()
 
 
 @pytest_asyncio.fixture(autouse=True)

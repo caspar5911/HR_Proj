@@ -15,6 +15,18 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LogoutRequest(BaseModel):
+    """Optional logout payload.
+
+    Carrying the refresh token lets the server revoke it immediately so it
+    cannot be replayed after logout. Omitting it (or sending no body at all)
+    keeps the old stateless logout behaviour — the endpoint stays a simple
+    acknowledgement.
+    """
+
+    refresh_token: str | None = None
+
+
 class UserOut(BaseModel):
     id: int
     email: str

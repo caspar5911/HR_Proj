@@ -29,6 +29,14 @@ from app.utils.errors import PermissionDeniedError
 
 router = APIRouter()
 
+# Roles that may see the whole directory (vs. plain employees, who are
+# scoped to their own record everywhere in this router).
+STAFF_ROLES = (UserRole.ADMIN, UserRole.MANAGER)
+
+
+def _is_staff(user: User) -> bool:
+    return user.role in STAFF_ROLES
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +67,28 @@ def _build_out(emp: Employee) -> EmployeeOut:
     )
 
 
+async def _sync_linked_user_active(
+    db: AsyncSession, user_id: int | None, active: bool
+) -> bool:
+    """Bring the linked login account in line with the employee's status.
+
+    Deactivating/offboarding an employee must not leave a working login
+    behind. Returns True when an account's state actually changed (callers
+    use it to enrich the audit entry).
+    """
+    if user_id is None:
+        return False
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if user is None or user.is_active == active:
+        return False
+    user.is_active = active
+    await db.commit()
+    await db.refresh(user)
+    return True
+
+
 # ── list ─────────────────────────────────────────────────────────────────────
 
 
@@ -66,8 +96,15 @@ def _build_out(emp: Employee) -> EmployeeOut:
 async def list_employees_endpoint(
     params: EmployeeListParams = Depends(),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Return a paginated list of employees with optional filters."""
+    """Return a paginated list of employees with optional filters.
+
+    Access control: admins/managers see the full directory. Plain employees
+    are scoped to their own record — the directory carries PII and salary,
+    which must not be enumerable by any authenticated user.
+    """
+    scoped_to_user = None if _is_staff(current_user) else current_user.id
     items, total = await employee_crud.list_employees(
         db,
         page=params.page,
@@ -77,6 +114,7 @@ async def list_employees_endpoint(
         status=params.status,
         position=params.position,
         include_inactive=params.include_inactive,
+        user_id=scoped_to_user,
     )
     total_pages = math.ceil(total / params.page_size) if total else 0
 
@@ -97,8 +135,15 @@ async def list_employees_endpoint(
     response_model=list[EmployeeOutWithManager],
     dependencies=[Depends(get_current_user)],
 )
-async def get_org_tree_endpoint(db: AsyncSession = Depends(get_db)) -> Any:
-    """Return the full employee hierarchy as a tree."""
+async def get_org_tree_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return the full employee hierarchy as a tree (staff only)."""
+    if not _is_staff(current_user):
+        raise PermissionDeniedError(
+            "The org chart is only available to managers and admins"
+        )
     tree = await employee_crud.get_org_tree(db)
     return [_build_out(e) for e in tree]
 
@@ -207,11 +252,24 @@ async def get_payslips_endpoint(
 async def get_employee_endpoint(
     employee_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Return a single employee by ID."""
+    """Return a single employee by ID.
+
+    Admins/managers may read any record; a plain employee may only read
+    their own (same rule as the payslips endpoint below).
+    """
     employee = await employee_crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    if not _is_staff(current_user):
+        my_profile = (
+            await db.execute(select(Employee).where(Employee.user_id == current_user.id))
+        ).scalar_one_or_none()
+        if my_profile is None or my_profile.id != employee_id:
+            raise PermissionDeniedError("You can only view your own employee record")
+
     return _build_out(employee)
 
 
@@ -363,13 +421,22 @@ async def deactivate_employee_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    """Mark an employee as inactive (soft-delete)."""
+    """Mark an employee as inactive (soft-delete).
+
+    Also disables the linked login account, so a leaver cannot keep
+    authenticating and using the self-service endpoints.
+    """
     employee = await employee_crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
 
     old_status = employee.status
     employee = await employee_crud.deactivate_employee(db, employee)
+    user_deactivated = await _sync_linked_user_active(db, employee.user_id, active=False)
+
+    changes: dict = {"old": {"status": old_status}, "new": {"status": employee.status}}
+    if user_deactivated:
+        changes["user_account"] = "deactivated"
     await record_audit(
         db,
         user=current_user,
@@ -377,7 +444,7 @@ async def deactivate_employee_endpoint(
         action="employee.deactivated",
         entity="employee",
         entity_id=employee.id,
-        changes={"old": {"status": old_status}, "new": {"status": employee.status}},
+        changes=changes,
     )
     return _build_out(employee)
 
@@ -393,13 +460,22 @@ async def restore_employee_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    """Reactivate an inactive employee."""
+    """Reactivate an inactive employee.
+
+    Symmetric with deactivation: the linked login account is re-enabled too
+    (it was disabled when the employee was deactivated).
+    """
     employee = await employee_crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
 
     old_status = employee.status
     employee = await employee_crud.restore_employee(db, employee)
+    user_reactivated = await _sync_linked_user_active(db, employee.user_id, active=True)
+
+    changes: dict = {"old": {"status": old_status}, "new": {"status": employee.status}}
+    if user_reactivated:
+        changes["user_account"] = "reactivated"
     await record_audit(
         db,
         user=current_user,
@@ -407,7 +483,7 @@ async def restore_employee_endpoint(
         action="employee.restored",
         entity="employee",
         entity_id=employee.id,
-        changes={"old": {"status": old_status}, "new": {"status": employee.status}},
+        changes=changes,
     )
     return _build_out(employee)
 
@@ -426,7 +502,11 @@ async def delete_employee_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Permanently delete an employee record."""
+    """Permanently delete an employee record.
+
+    Also disables the linked login account — deleting the directory record
+    must not leave a working login behind (same rule as deactivation).
+    """
     employee = await employee_crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
@@ -438,7 +518,13 @@ async def delete_employee_endpoint(
         "department": employee.department,
         "status": employee.status,
     }
+    linked_user_id = employee.user_id
     await employee_crud.delete_employee(db, employee)
+    user_deactivated = await _sync_linked_user_active(db, linked_user_id, active=False)
+
+    changes: dict = {"old": snapshot}
+    if user_deactivated:
+        changes["user_account"] = "deactivated"
     await record_audit(
         db,
         user=current_user,
@@ -446,6 +532,6 @@ async def delete_employee_endpoint(
         action="employee.deleted",
         entity="employee",
         entity_id=employee_id,
-        changes={"old": snapshot},
+        changes=changes,
     )
     return None

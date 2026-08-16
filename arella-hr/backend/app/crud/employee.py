@@ -46,13 +46,20 @@ async def list_employees(
     status: Optional[str] = None,
     position: Optional[str] = None,
     include_inactive: bool = False,
+    user_id: Optional[int] = None,
 ) -> tuple[list[Employee], int]:
     """Return (items, total_count) with optional filters.
 
     Pagination is offset-based.  The total_count is computed via a COUNT subquery
     so that the caller can derive total_pages without an extra query.
+
+    ``user_id`` restricts the result to the record linked to that user account —
+    used by the API layer to scope self-service callers to their own record.
     """
     conditions: list = []
+
+    if user_id is not None:
+        conditions.append(Employee.user_id == user_id)
 
     if not include_inactive:
         conditions.append(Employee.status != "inactive")

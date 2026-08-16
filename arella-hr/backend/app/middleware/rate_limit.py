@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 
 from fastapi import Request
 
+from app.config import settings
 from app.utils.errors import RateLimitError
 
 
@@ -35,7 +36,18 @@ class RateLimiter:
 
 
 def client_ip(request: Request) -> str:
-    """Best-effort client IP to use as the rate-limit key."""
+    """Best-effort client IP to use as the rate-limit key.
+
+    When ``TRUST_PROXY_HEADERS`` is set, the first hop of ``X-Forwarded-For``
+    is used — that is the original client behind a reversing proxy, rather
+    than the proxy's own (shared) address. The flag is read at call time so
+    it can be toggled per-process (and in tests) without re-importing.
+    """
+    if settings.TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        first_hop = forwarded.split(",")[0].strip()
+        if first_hop:
+            return first_hop
     return request.client.host if request.client else "unknown"
 
 

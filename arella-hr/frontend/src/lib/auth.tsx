@@ -57,6 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Offer the refresh token to the server so it can revoke it, and stop it
+    // working the moment the user signs out. Read it before clearing storage
+    // so the request body is populated, and swallow the response — this is a
+    // fire-and-forget call; the UI must never wait on or block on it.
+    const refresh_token = localStorage.getItem("refresh_token");
+    if (refresh_token) {
+      api.post("/auth/logout", { refresh_token }).catch(() => {});
+    }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     queryClient.clear();
