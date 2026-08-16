@@ -52,7 +52,10 @@ export function MainLayout() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-60 shrink-0 bg-slate-900 text-white flex flex-col">
+      {/* h-screen + sticky: the sidebar (and its sign-out footer) stays
+          pinned to the viewport on tall pages instead of ending up at the
+          bottom of the document. */}
+      <aside className="h-screen sticky top-0 w-60 shrink-0 bg-slate-900 text-white flex flex-col">
         <div className="px-5 py-5 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg">
