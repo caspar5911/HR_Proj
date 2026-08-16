@@ -34,6 +34,12 @@ class User(Base):
     # claim; a token whose version lags the user's current one is rejected,
     # which instantly kills every session issued before the change.
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Consecutive failed logins (see app.api.v1.auth). Reset on success; when
+    # the threshold is reached ``locked_until`` is set and this is cleared.
+    login_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # If set to a future timestamp, login is refused until then — the account
+    # has been temporarily locked after repeated failed attempts.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

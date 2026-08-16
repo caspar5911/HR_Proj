@@ -1,5 +1,6 @@
 """Authentication endpoints."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
@@ -29,6 +30,22 @@ from app.models.user import User
 
 router = APIRouter()
 
+# ── brute-force defence ─────────────────────────────────────────────────────
+# Per-account lockout on top of the per-IP rate limit: after
+# MAX_LOGIN_ATTEMPTS consecutive failures the account is refused for
+# LOGIN_LOCKOUT_MINUTES, even with the correct password. The IP limiter
+# stops mass sweeps across many accounts; this stops a sustained attack on
+# one account, which an attacker could otherwise continue from rotating IPs.
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
+
+# Pre-computed bcrypt hash for unknown emails: checking against it takes the
+# same time as checking a real user's hash, so response time never leaks
+# which addresses exist (user-enumeration defence).
+DUMMY_PASSWORD_HASH = bcrypt.hashpw(
+    b"timing-equalization-dummy", bcrypt.gensalt()
+).decode("utf-8")
+
 
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(limit_login)])
 async def login(
@@ -44,12 +61,20 @@ async def login(
     response stays a generic 401 "Invalid credentials" for both an unknown
     email and a wrong password, so the API never confirms whether an address
     exists (user-enumeration defence).
+
+    After ``MAX_LOGIN_ATTEMPTS`` consecutive failures the account is locked
+    for ``LOGIN_LOCKOUT_MINUTES``; while locked every attempt — including
+    the correct password — is refused with a 403. A successful login clears
+    the failure counter.
     """
     stmt = select(User).where(User.email.ilike(credentials.email))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
     if not user:
+        # Timing equalisation: run bcrypt against the dummy hash so an
+        # unknown email costs the same as a known one.
+        _verify_password(credentials.password, DUMMY_PASSWORD_HASH)
         await record_audit(
             db,
             user=None,
@@ -60,14 +85,36 @@ async def login(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    if not _verify_password(credentials.password, user.hashed_password):
+    now = datetime.now(timezone.utc)
+    locked_until = _locked_until(user)
+    if locked_until is not None and locked_until > now:
         await record_audit(
             db,
             user=user,
             request=request,
             action="auth.login.failure",
             entity="auth",
-            changes={"reason": "invalid_credentials"},
+            changes={"reason": "locked_out"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account temporarily locked. Try again later.",
+        )
+
+    if not _verify_password(credentials.password, user.hashed_password):
+        user.login_failures = (user.login_failures or 0) + 1
+        just_locked = user.login_failures >= MAX_LOGIN_ATTEMPTS
+        if just_locked:
+            user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+            user.login_failures = 0
+        await db.commit()
+        await record_audit(
+            db,
+            user=user,
+            request=request,
+            action="auth.login.failure",
+            entity="auth",
+            changes={"reason": "locked_out" if just_locked else "invalid_credentials"},
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
@@ -81,6 +128,11 @@ async def login(
             changes={"reason": "deactivated"},
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
+
+    # A successful login clears any pending failure state.
+    user.login_failures = 0
+    user.locked_until = None
+    await db.commit()
 
     subject = {"sub": str(user.id), "role": user.role, "ver": user.token_version}
     access_token = create_access_token(subject)
@@ -245,6 +297,20 @@ async def change_password(
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def _locked_until(user: User) -> datetime | None:
+    """Return the user's lockout deadline as a timezone-aware datetime.
+
+    Postgres (``TIMESTAMPTZ``) returns aware values; SQLite — used by the
+    test suite — drops the UTC offset on round-trip, so naive values are
+    read back as UTC.
+    """
+    if user.locked_until is None:
+        return None
+    if user.locked_until.tzinfo is None:
+        return user.locked_until.replace(tzinfo=timezone.utc)
+    return user.locked_until
+
 
 def _verify_password(plain: str, hashed: str) -> bool:
     """Verify plain-text password against bcrypt hash."""
