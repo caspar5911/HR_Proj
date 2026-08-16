@@ -5,6 +5,9 @@ backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.env
 
+# Python virtual environments (local dev — see README "Running Locally")
+.venv/
+
 # Frontend
 frontend/node_modules
 frontend/dist
