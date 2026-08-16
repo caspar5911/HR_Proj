@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,14 @@ from app.middleware.auth import (
     verify_token_payload,
 )
 from app.middleware.rate_limit import limit_login, limit_refresh
-from app.schemas.auth import LoginRequest, LogoutRequest, RefreshRequest, TokenResponse, UserOut
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    LogoutRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserOut,
+)
 from app.services.token_revocation import REVOKED_REFRESH_TOKENS
 from app.models.user import User
 
@@ -176,9 +184,58 @@ async def logout(
     return {"message": "Logged out successfully"}
 
 
+# Minimum length for a new password. The current password is accepted as-is
+# (legacy short passwords still verify); only *new* passwords are gated.
+MIN_PASSWORD_LENGTH = 8
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Change the caller's own password.
+
+    Requires the current password as a second factor so a stolen access token
+    alone cannot reset the account. The new password must meet the minimum
+    length. A successful change is written to the audit trail
+    (``auth.password.change``) so credential rotation is visible to operators.
+    """
+    if not _verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if len(body.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
+
+    current_user.hashed_password = _hash_password(body.new_password)
+    await db.commit()
+
+    await record_audit(
+        db,
+        user=current_user,
+        request=request,
+        action="auth.password.change",
+        entity="auth",
+    )
+
+    return {"message": "Password updated successfully"}
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _verify_password(plain: str, hashed: str) -> bool:
     """Verify plain-text password against bcrypt hash."""
-    import bcrypt
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def _hash_password(plain: str) -> str:
+    """Return a bcrypt hash of a plain-text password."""
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

@@ -37,6 +37,18 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
+class ChangePasswordRequest(BaseModel):
+    """Self-service password change.
+
+    ``current_password`` is required as a second factor: a stolen access token
+    alone must not be able to reset the account. ``new_password`` must meet the
+    minimum-length policy enforced server-side.
+    """
+
+    current_password: str
+    new_password: str
+
+
 class UserOut(BaseModel):
     id: int
     email: str

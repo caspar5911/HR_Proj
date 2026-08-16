@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   Award,
@@ -6,6 +7,7 @@ import {
   Clock,
   FileClock,
   Home,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Network,
@@ -16,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 
 /**
  * Navigation is role-aware: managers/admins get the full operations menu,
@@ -45,6 +48,7 @@ const EMPLOYEE_NAV = [
 
 export function MainLayout() {
   const { user, logout } = useAuth();
+  const [passwordOpen, setPasswordOpen] = useState(false);
   // Audit Log is admin-only on the backend — hide it for managers.
   const baseNav = user?.role === "employee" ? EMPLOYEE_NAV : STAFF_NAV;
   const nav = user?.role === "admin" ? baseNav : baseNav.filter((n) => n.to !== "/audit-logs");
@@ -101,6 +105,13 @@ export function MainLayout() {
               <RoleBadge role={user?.role} />
             </div>
             <button
+              onClick={() => setPasswordOpen(true)}
+              title="Change password"
+              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
+            <button
               onClick={logout}
               title="Sign out"
               className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
@@ -120,6 +131,8 @@ export function MainLayout() {
           <Outlet />
         </div>
       </main>
+
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </div>
   );
 }
