@@ -149,6 +149,13 @@ Or run the backend suite inside the container:
 docker compose exec backend python -m pytest
 ```
 
+### Continuous integration
+
+Every push to `main` and every PR runs the same gate in GitHub Actions
+(`.github/workflows/ci.yml`): the full backend suite on Python 3.12 plus
+the frontend unit tests and production build. A commit only lands on
+`main` with both jobs green.
+
 ## Migrations
 
 Migrations are applied **automatically when the backend starts** (`alembic upgrade head`,
