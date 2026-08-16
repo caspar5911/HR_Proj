@@ -24,7 +24,8 @@
 // Prereqs:
 //   - Docker Compose stack is up (db + backend on :8010 + frontend on :5173)
 //   - Demo data is seeded:  docker compose exec backend python /app/seed_demo.py
-//   - npm i -D playwright && npx playwright install chromium  (in frontend/)
+//   - Node + Playwright in demo/:  npm i playwright && npx playwright install chromium
+//   - ffmpeg (on PATH, or at the FFMPEG_LOCAL path below) for the MP4 conversion
 //
 // Run from anywhere:
 //   node "C:\...\arella-hr\demo\record-walkthrough.mjs"
@@ -46,7 +47,9 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VIDEO_DIR = path.join(here, "videos");
 const OUT_MP4 = path.join(here, "arella-hr-walkthrough.mp4");
-const FFMPEG = "C:/Program Files/ffmpeg-8.0-full_build/bin/ffmpeg.exe";
+// This machine's local ffmpeg build; fall back to ffmpeg on PATH (fresh PCs).
+const FFMPEG_LOCAL = "C:/Program Files/ffmpeg-8.0-full_build/bin/ffmpeg.exe";
+const FFMPEG = fs.existsSync(FFMPEG_LOCAL) ? FFMPEG_LOCAL : "ffmpeg";
 const BASE = "http://localhost:5173";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

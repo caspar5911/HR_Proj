@@ -17,6 +17,9 @@ A full-featured HR management system for small and medium businesses (50–500 e
 
 ## Quick Start
 
+> **Fresh PC?** Step-by-step guide from clone to a fully seeded demo app
+> (demo data, test suites, demo scripts): [LOCAL.md](LOCAL.md)
+
 ### Prerequisites
 
 - Docker & Docker Compose
