@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.utils.errors import register_exception_handlers
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -135,6 +136,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Defensive security headers on every response. Added last so it sits
+    # outermost and also covers CORS preflight responses.
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Health check
     @app.get("/health")
