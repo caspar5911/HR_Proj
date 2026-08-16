@@ -43,6 +43,9 @@ services:
       # Comma-separated allowed origins (GitHub Pages deployment, …)
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       DEBUG: "false"
+      # Swagger UI / OpenAPI schema — on for local dev, off in production
+      # (set EXPOSE_API_DOCS=false in .env for prod stacks).
+      EXPOSE_API_DOCS: ${EXPOSE_API_DOCS:-true}
     depends_on:
       db:
         condition: service_healthy

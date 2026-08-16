@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────────────────
     APP_NAME: str = "Arella HR System"
     DEBUG: bool = False
+    # Serve the Swagger UI + OpenAPI schema? Off by default: a live API docs
+    # page is a ready-made attack map (every endpoint, model and parameter).
+    # The dev compose stack enables it; production deployments leave it off.
+    EXPOSE_API_DOCS: bool = False
 
     # ── Database ─────────────────────────────────────────────────────────────
     # Either a full URL (dev / Docker / .env) OR left unset when a PaaS such

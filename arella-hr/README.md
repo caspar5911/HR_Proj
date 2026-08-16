@@ -107,6 +107,7 @@ All compose variables default to dev-only values and can be overridden via a `.e
 | `POSTGRES_PASSWORD` | `postgres` | PostgreSQL password |
 | `SECRET_KEY` | — (no default) | JWT signing key — the backend **refuses to start** if it is missing, too short, or the old well-known value. The local `.env` ships a dev-only key; generate a new one for any shared deployment: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SEED_ADMIN_PASSWORD` | `admin123` | Seed admin password — **must be set in production** |
+| `EXPOSE_API_DOCS` | `true` in compose / `false` in the app | Swagger UI + OpenAPI schema at `/api/docs` — set `false` in production so the full API surface isn't advertised |
 | `PGADMIN_PASSWORD` | `admin` | pgAdmin login (tools profile) |
 | `BACKEND_PORT` / `FRONTEND_PORT` / `FRONTEND_PROD_PORT` | `8000` / `5173` / `3000` | Host port mappings |
 

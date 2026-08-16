@@ -111,12 +111,17 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    # The Swagger UI and OpenAPI schema are only served when explicitly
+    # enabled (EXPOSE_API_DOCS) — an exposed docs page maps the entire API
+    # surface for attackers. /redoc is never served.
+    expose_docs = settings.EXPOSE_API_DOCS
     app = FastAPI(
         title=settings.APP_NAME,
         version="0.1.0",
         description="HR Management System for SMBs",
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if expose_docs else None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json" if expose_docs else None,
         lifespan=lifespan,
     )
 
