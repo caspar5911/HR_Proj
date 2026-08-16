@@ -14,7 +14,7 @@ from app.middleware.auth import (
     verify_token_payload,
 )
 from app.middleware.rate_limit import limit_login, limit_refresh
-from app.schemas.auth import LoginRequest, LogoutRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginRequest, LogoutRequest, RefreshRequest, TokenResponse, UserOut
 from app.services.token_revocation import REVOKED_REFRESH_TOKENS
 from app.models.user import User
 
@@ -41,13 +41,16 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)) -
 
 
 @router.post("/refresh", response_model=TokenResponse, dependencies=[Depends(limit_refresh)])
-async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)) -> Any:
+async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> Any:
     """Exchange a refresh token for a new access token pair.
 
     Rotation: the presented token is revoked the moment it is used, so a
     captured refresh token can be replayed at most once.
+
+    The token arrives in the JSON body (not the query string) so refresh JWTs
+    don't get captured in access logs / proxy history.
     """
-    payload = verify_token_payload(refresh_token)
+    payload = verify_token_payload(body.refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 

@@ -15,6 +15,16 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class RefreshRequest(BaseModel):
+    """Refresh-token exchange payload.
+
+    The token travels in the JSON body, not the query string: refresh JWTs in
+    URLs end up in access logs, proxy history, and ``Referer``-style leaks.
+    """
+
+    refresh_token: str
+
+
 class LogoutRequest(BaseModel):
     """Optional logout payload.
 

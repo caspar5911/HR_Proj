@@ -56,17 +56,15 @@ async def test_login_missing_field_is_validation_error(client, db):
 # ── refresh ─────────────────────────────────────────────────────────────────
 
 
-# NOTE: the endpoint declares ``refresh_token: str`` (a bare scalar), so
-# FastAPI exposes it as a REQUIRED QUERY PARAMETER, not a JSON body.
-# (Sending a refresh JWT in the query string is a security smell — it lands
-# in access logs / proxy history. If the API is ever changed to accept the
-# token in the body, update these tests.)
+# NOTE: the refresh token travels in the JSON body, never the query string —
+# a refresh JWT in the URL would land in access logs / proxy history. These
+# tests therefore post ``json={"refresh_token": ...}``.
 
 
 async def test_refresh_returns_new_token_pair(client, db):
     await seed_user(db, email="user@test.com")
     tokens = await login(client, "user@test.com")
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 200
     body = resp.json()
     assert body["access_token"]
@@ -77,14 +75,14 @@ async def test_refresh_returns_new_token_pair(client, db):
 async def test_refresh_rejects_access_token(client, db):
     await seed_user(db, email="user@test.com")
     tokens = await login(client, "user@test.com")
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["access_token"]})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": tokens["access_token"]})
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
 
 
 async def test_refresh_rejects_garbage_token(client, db):
     await seed_user(db, email="user@test.com")
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": "not-a-jwt"})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": "not-a-jwt"})
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
 
@@ -99,18 +97,18 @@ async def test_refresh_token_is_single_use(client, db):
     original = tokens["refresh_token"]
 
     # First use rotates to a fresh pair.
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": original})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": original})
     assert resp.status_code == 200
     rotated = resp.json()["refresh_token"]
     assert rotated != original
 
     # Replaying the original must now fail.
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": original})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": original})
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
 
     # The rotated successor still works.
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": rotated})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": rotated})
     assert resp.status_code == 200
 
 
@@ -126,7 +124,7 @@ async def test_logout_revokes_presented_refresh_token(client, db):
 
     # The revoked token can no longer be refreshed.
     resp = await client.post(
-        f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]}
+        f"{API}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
@@ -196,9 +194,9 @@ async def test_refresh_rate_limit_blocks_after_20_attempts(client, db):
     # Rotate the token on each call — refresh is now single-use, so the same
     # token would be revoked after its first use.
     for _ in range(20):
-        resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+        resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
         assert resp.status_code == 200, resp.text
         tokens["refresh_token"] = resp.json()["refresh_token"]
-    resp = await client.post(f"{API}/auth/refresh", params={"refresh_token": tokens["refresh_token"]})
+    resp = await client.post(f"{API}/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 429
     assert resp.json()["detail"]["code"] == "RATE_LIMITED"
