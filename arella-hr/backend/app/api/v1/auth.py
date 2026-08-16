@@ -2,11 +2,12 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.audit import record_audit
 from app.middleware.auth import (
     get_current_user,
     create_access_token,
@@ -22,20 +23,67 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(limit_login)])
-async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)) -> Any:
-    """Authenticate user by email + password, return JWT tokens."""
+async def login(
+    credentials: LoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Authenticate user by email + password, return JWT tokens.
+
+    Every attempt is written to the audit trail (``auth.login.success`` /
+    ``auth.login.failure``) so brute-force and account-takeover activity can
+    be detected. Failure entries record the cause internally, but the HTTP
+    response stays a generic 401 "Invalid credentials" for both an unknown
+    email and a wrong password, so the API never confirms whether an address
+    exists (user-enumeration defence).
+    """
     stmt = select(User).where(User.email.ilike(credentials.email))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
-    if not user or not _verify_password(credentials.password, user.hashed_password):
+    if not user:
+        await record_audit(
+            db,
+            user=None,
+            request=request,
+            action="auth.login.failure",
+            entity="auth",
+            changes={"email": credentials.email, "reason": "unknown_user"},
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    if not _verify_password(credentials.password, user.hashed_password):
+        await record_audit(
+            db,
+            user=user,
+            request=request,
+            action="auth.login.failure",
+            entity="auth",
+            changes={"reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not user.is_active:
+        await record_audit(
+            db,
+            user=user,
+            request=request,
+            action="auth.login.failure",
+            entity="auth",
+            changes={"reason": "deactivated"},
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
     access_token = create_access_token({"sub": str(user.id), "role": user.role})
     refresh_token = create_refresh_token({"sub": str(user.id), "role": user.role})
+
+    await record_audit(
+        db,
+        user=user,
+        request=request,
+        action="auth.login.success",
+        entity="auth",
+    )
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
 
@@ -92,7 +140,11 @@ async def me(current_user: User = Depends(get_current_user)) -> Any:
 
 
 @router.post("/logout")
-async def logout(body: LogoutRequest | None = None) -> dict:
+async def logout(
+    request: Request,
+    body: LogoutRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """Acknowledge logout and, when offered, revoke the caller's refresh token.
 
     JWTs are stateless, so a plain ``POST /logout`` (no body) still just
@@ -100,11 +152,27 @@ async def logout(body: LogoutRequest | None = None) -> dict:
     it immediately so it cannot be replayed after logout. The endpoint stays
     unauthenticated on purpose: revoking a token you are handed is safe, and
     it keeps the call working even once the access token has expired.
+
+    A successful revocation is recorded to the audit trail (``auth.logout``)
+    so sign-out activity is as visible as sign-in.
     """
     if body and body.refresh_token:
         payload = verify_token_payload(body.refresh_token)
         if payload and payload.get("type") == "refresh":
-            REVOKED_REFRESH_TOKENS.revoke(payload.get("jti"), payload.get("exp", 0))
+            jti = payload.get("jti")
+            REVOKED_REFRESH_TOKENS.revoke(jti, payload.get("exp", 0))
+            sub = (payload.get("data") or {}).get("sub")
+            if sub:
+                user = (
+                    await db.execute(select(User).where(User.id == int(sub)))
+                ).scalar_one_or_none()
+                await record_audit(
+                    db,
+                    user=user,
+                    request=request,
+                    action="auth.logout",
+                    entity="auth",
+                )
     return {"message": "Logged out successfully"}
 
 
