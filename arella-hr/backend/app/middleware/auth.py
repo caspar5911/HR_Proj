@@ -102,6 +102,14 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
+    # Every password change bumps ``token_version``; a token whose ``ver``
+    # claim lags the user's current version belongs to a session that must no
+    # longer be trusted. Tokens minted before this check existed carry no
+    # claim — they are read as version 0 and stay valid until the user's next
+    # password change.
+    if int(payload.get("ver", 0)) != (user.token_version or 0):
+        raise credentials_exception
+
     return user
 
 

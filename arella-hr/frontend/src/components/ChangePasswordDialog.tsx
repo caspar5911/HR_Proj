@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 /**
  * Self-service password change. Requires the current password as a second
@@ -26,6 +27,7 @@ export function ChangePasswordDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { logout } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -62,6 +64,12 @@ export function ChangePasswordDialog({
       });
       toast.success("Password updated", "Use your new password next time you sign in.");
       handleOpenChange(false);
+      // The server just invalidated every token minted under the old
+      // password — including the one this session is running on. Sign out
+      // immediately instead of letting the next API call fail with a 401.
+      // logout() also revokes the refresh token; the auth guard then sends
+      // the user back to the login page.
+      logout();
     } catch (err) {
       toast.error("Could not change password", errMsg(err));
     } finally {

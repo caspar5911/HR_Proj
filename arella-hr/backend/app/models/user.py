@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base
@@ -30,6 +30,10 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Bumped on every password change. JWTs carry the value as a ``ver``
+    # claim; a token whose version lags the user's current one is rejected,
+    # which instantly kills every session issued before the change.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

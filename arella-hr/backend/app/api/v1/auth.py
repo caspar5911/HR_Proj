@@ -82,8 +82,9 @@ async def login(
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
-    access_token = create_access_token({"sub": str(user.id), "role": user.role})
-    refresh_token = create_refresh_token({"sub": str(user.id), "role": user.role})
+    subject = {"sub": str(user.id), "role": user.role, "ver": user.token_version}
+    access_token = create_access_token(subject)
+    refresh_token = create_refresh_token(subject)
 
     await record_audit(
         db,
@@ -127,11 +128,21 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> A
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 
+    # The token must have been minted under the user's current credential
+    # version. A password change bumps the version, so any refresh token
+    # issued before it is refused here instead of being extended.
+    if int(subject.get("ver", 0)) != (user.token_version or 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+        )
+
     # Rotate: invalidate the presented token before handing out its successor.
     REVOKED_REFRESH_TOKENS.revoke(jti, payload.get("exp", 0))
 
-    new_access = create_access_token({"sub": str(user.id), "role": user.role})
-    new_refresh = create_refresh_token({"sub": str(user.id), "role": user.role})
+    new_subject = {"sub": str(user.id), "role": user.role, "ver": user.token_version}
+    new_access = create_access_token(new_subject)
+    new_refresh = create_refresh_token(new_subject)
     return TokenResponse(access_token=new_access, refresh_token=new_refresh, token_type="bearer")
 
 
@@ -216,6 +227,10 @@ async def change_password(
         )
 
     current_user.hashed_password = _hash_password(body.new_password)
+    # Bump the credential version so every access and refresh token minted
+    # before this change is rejected on its next use — a password rotation
+    # must end every older session, not just the caller's.
+    current_user.token_version = (current_user.token_version or 0) + 1
     await db.commit()
 
     await record_audit(
