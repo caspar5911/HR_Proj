@@ -33,22 +33,17 @@ MIGRATION_RETRY_DELAY_S = 2.0
 
 # Out-of-the-box secrets shipped in the defaults. The one-action local stack
 # relies on these, so their presence is a *warning*, never a hard failure.
-_DEFAULT_SECRET_KEY = "change-me-in-production"
+# (SECRET_KEY is not checked here: app.config refuses to start with the old
+# well-known default, so a weak signing key is a hard failure, not a warning.)
 _DEFAULT_ADMIN_PASSWORD = "admin123"
 
 
 def _warn_on_default_secrets() -> None:
     """Log a prominent warning for every well-known secret still in use.
 
-    JWTs signed with the default SECRET_KEY can be forged by anyone who reads
-    this repo; a default superadmin password is a standing open backdoor.
-    Production deployments must override both via environment variables.
+    A default superadmin password is a standing open backdoor. Production
+    deployments must override it via the SEED_ADMIN_PASSWORD env var.
     """
-    if settings.SECRET_KEY == _DEFAULT_SECRET_KEY:
-        logger.warning(
-            "SECURITY: SECRET_KEY is still the built-in default — set the "
-            "SECRET_KEY env var to a long random value before deploying."
-        )
     if settings.SEED_ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD:
         logger.warning(
             "SECURITY: SEED_ADMIN_PASSWORD is still the built-in default "

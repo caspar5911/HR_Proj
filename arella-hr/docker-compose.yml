@@ -35,7 +35,9 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-arellahr}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # No default on purpose: the backend fails fast if the JWT signing key
+      # is missing, too short, or the old well-known one.
+      SECRET_KEY: ${SECRET_KEY}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
       # Comma-separated allowed origins (GitHub Pages deployment, …)

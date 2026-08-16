@@ -10,6 +10,12 @@ from pydantic_settings import BaseSettings
 # a full DATABASE_URL, so this is only a last-resort fallback.
 _DEV_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arellahr"
 
+# The JWT signing key that must never end up in a running deployment: it was
+# the default shipped in this repo, so anyone who reads the code can forge
+# valid tokens with it.
+_INSECURE_SECRET_KEY = "change-me-in-production"
+_MIN_SECRET_KEY_LENGTH = 32
+
 
 def _to_asyncpg(url: str) -> str:
     """Return *url* using the SQLAlchemy asyncpg dialect.
@@ -36,7 +42,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = None
 
     # ── Auth ─────────────────────────────────────────────────────────────────
-    SECRET_KEY: str = "change-me-in-production"
+    # No usable default on purpose — _check_secret_key rejects an empty,
+    # short, or well-known value, so the process fails fast at startup.
+    SECRET_KEY: str = ""
     # Accepts both ALGORITHM (legacy) and JWT_ALGORITHM
     JWT_ALGORITHM: str = Field(default="HS256", alias="ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
@@ -96,6 +104,29 @@ class Settings(BaseSettings):
             )
         else:
             self.DATABASE_URL = _DEV_DATABASE_URL
+        return self
+
+    @model_validator(mode="after")
+    def _check_secret_key(self) -> "Settings":
+        """Refuse to start with a missing or known-insecure JWT signing key.
+
+        Every access and refresh token is signed with ``SECRET_KEY``; a
+        deployment running on the bundled default (or an empty value) would
+        let anyone mint valid tokens and impersonate any user. Failing fast
+        at startup — with an actionable message — is far better than
+        signing sessions with a publicly known key.
+        """
+        if (
+            not self.SECRET_KEY
+            or self.SECRET_KEY == _INSECURE_SECRET_KEY
+            or len(self.SECRET_KEY) < _MIN_SECRET_KEY_LENGTH
+        ):
+            raise RuntimeError(
+                "SECRET_KEY is missing or insecure. Set a random value of at "
+                "least 32 characters — e.g. "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\" — "
+                "and provide it to the process (or add SECRET_KEY=... to .env)."
+            )
         return self
 
 

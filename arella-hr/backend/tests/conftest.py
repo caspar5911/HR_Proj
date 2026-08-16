@@ -4,12 +4,18 @@ Every test gets a pristine in-memory SQLite schema and a clean set of
 in-memory rate limiters, so tests never interfere with each other.
 """
 
+import os
 from collections.abc import AsyncGenerator
 
 import bcrypt
 import httpx
 import pytest
 import pytest_asyncio
+
+# The settings layer refuses to boot without a real JWT signing key. The
+# test suite supplies its own so ``python -m pytest`` works on a fresh clone
+# with no .env yet; real processes must still provide their own key.
+os.environ.setdefault("SECRET_KEY", "test-only-key-not-for-production-0123456789")
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
