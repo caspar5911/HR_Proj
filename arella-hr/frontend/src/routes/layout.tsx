@@ -10,6 +10,7 @@ import {
   LogOut,
   Network,
   ShieldCheck,
+  Target,
   Users,
   Wallet,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const STAFF_NAV = [
   { to: "/payroll", label: "Payroll", icon: Wallet },
   { to: "/attendance", label: "Attendance", icon: CalendarCheck },
   { to: "/performance", label: "Performance", icon: Award },
+  { to: "/goals", label: "Goals", icon: Target },
   { to: "/my-home", label: "My Home", icon: Home },
   { to: "/my-time", label: "My Time", icon: Clock },
   { to: "/audit-logs", label: "Audit Log", icon: FileClock },
@@ -38,6 +40,7 @@ const EMPLOYEE_NAV = [
   { to: "/leave", label: "My Leave", icon: CalendarDays },
   { to: "/my-time", label: "My Time", icon: Clock },
   { to: "/my-reviews", label: "My Reviews", icon: Award },
+  { to: "/goals", label: "My Goals", icon: Target },
 ];
 
 export function MainLayout() {

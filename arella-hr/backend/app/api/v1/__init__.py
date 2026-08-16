@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import auth, employees, departments, leave_types, leave_balances, leave_requests  # noqa: F401
 from app.api.v1 import payroll_runs, deduction_rules, audit_logs, dashboard, attendance, notifications  # noqa: F401
-from app.api.v1 import reviews  # noqa: F401
+from app.api.v1 import reviews, goals  # noqa: F401
 
 router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["Auth"])
@@ -21,3 +21,4 @@ router.include_router(attendance.router, prefix="/attendance", tags=["Attendance
 router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 # Review routes own two top-level paths (/review-cycles, /reviews) — no extra prefix.
 router.include_router(reviews.router, prefix="", tags=["Performance Reviews"])
+router.include_router(goals.router, prefix="/goals", tags=["Goals"])

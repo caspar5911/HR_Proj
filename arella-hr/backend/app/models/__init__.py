@@ -26,10 +26,11 @@ from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.time_entry import TimeEntry  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.review import ReviewCycle, Review  # noqa: F401
+from app.models.goal import Goal  # noqa: F401
 
 __all__ = [
     "Base", "User", "UserRole", "Employee", "Department",
     "LeaveType", "LeaveBalance", "LeaveRequest",
     "PayrollRun", "PayrollEntry", "DeductionRule", "AuditLog",
-    "TimeEntry", "Notification", "ReviewCycle", "Review",
+    "TimeEntry", "Notification", "ReviewCycle", "Review", "Goal",
 ]

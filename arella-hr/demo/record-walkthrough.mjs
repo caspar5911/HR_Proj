@@ -12,12 +12,14 @@
 //                   notification center, directory search & filters,
 //                   employee profile, org chart, leave approvals, payroll
 //                   run processing, team attendance (hours, overtime,
-//                   per-employee drill-down), and performance reviews
-//                   (cycle progress, writing a review, sharing one).
+//                   per-employee drill-down), performance reviews (cycle
+//                   progress, writing a review, sharing one), and goals —
+//                   the company OKR board (create a goal, update progress).
 //   Employee:       "My Home" self-service (balances, pay history, printable
 //                   payslip), notification bell, the employee-scoped leave
-//                   page, "My Time" (clock in/out + monthly time log), and
-//                   "My Reviews" (the shared mid-year review).
+//                   page, "My Time" (clock in/out + monthly time log),
+//                   "My Reviews" (the shared mid-year review), and
+//                   "My Goals" (the employee's own objectives).
 //
 // Prereqs:
 //   - Docker Compose stack is up (db + backend on :8010 + frontend on :5173)
@@ -29,7 +31,8 @@
 //
 // The recording mutates demo state (approves/rejects 2 leave requests,
 // processes the August payroll run, clocks in the demo employee for today,
-// submits a new review for Noa Berg, and shares Liam's submitted review).
+// submits a new review for Noa Berg, shares Liam's submitted review, and
+// creates/updates goals on the OKR board).
 // Re-seed afterwards to reset:
 //   docker compose exec backend python /app/seed_demo.py
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,13 +282,48 @@ async function main() {
     await liamReviewRow.getByText("Shared", { exact: true }).waitFor();
     await sleep(2500);
 
-    /* ── 18. Sign out ─────────────────────────────────────────────── */
+    /* ── 18. Goals: the company OKR board ─────────────────────────── */
+    await navLink(page, "Goals").click();
+    await page.getByRole("heading", { name: "Goals", level: 1 }).waitFor();
+    await page.locator("tr", { hasText: "Migrate the leave module" }).waitFor();
+    await setCaption(page, "Goals — the company OKR board: progress and status per objective");
+    await sleep(5000);
+
+    /* ── 19. Goals: create a new goal ─────────────────────────────── */
+    await setCaption(page, "Setting a new goal for Noa Berg");
+    await page.getByRole("button", { name: "New goal", exact: true }).click();
+    // The picker may pre-select an employee (no placeholder text then), so
+    // click the combobox trigger itself rather than the placeholder.
+    await page.getByRole("dialog").getByRole("combobox").click();
+    await page.getByRole("option", { name: /Noa Berg/ }).click();
+    await sleep(600);
+    await page.locator("#goal-title").fill("Adopt the new component library on the marketing site");
+    await page.locator("#goal-period").fill("H2 2026");
+    await page.locator("#goal-progress").fill("10");
+    await page.locator("#goal-description").fill("Migrate the five most-visited templates to the shared kit.");
+    await sleep(1200);
+    await page.getByRole("button", { name: "Create goal", exact: true }).click();
+    await page.getByText("Goal created").waitFor();
+    await page.locator("tr", { hasText: "Adopt the new component library" }).waitFor();
+    await sleep(3000);
+
+    /* ── 20. Goals: update progress on an in-flight goal ──────────── */
+    await setCaption(page, "Updating progress on an in-flight goal — 65% to 80%");
+    const migrateRow = page.locator("tr", { hasText: "Migrate the leave module" });
+    await migrateRow.locator('button[title="Edit goal"]').click();
+    await page.locator("#goal-progress").fill("80");
+    await sleep(1000);
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await page.getByText("Goal updated").waitFor();
+    await sleep(3000);
+
+    /* ── 21. Sign out ─────────────────────────────────────────────── */
     await setCaption(page, "Signing out to show the employee side");
     await page.locator('button[title="Sign out"]').click();
     await page.locator("#email").waitFor();
     await sleep(1500);
 
-    /* ── 13. Login (employee) ─────────────────────────────────────── */
+    /* ── 19. Login (employee) ─────────────────────────────────────── */
     await setCaption(page, "Signing in as Sam Okafor — employee self-service");
     await signIn(page, "employee@example.com", "employee123");
     // My Home's h1 is a "Hi {name} 👋" greeting — "My Home" is only the
@@ -303,7 +341,7 @@ async function main() {
     await page.keyboard.press("Escape");
     await sleep(700);
 
-    /* ── 14. Printable payslip ────────────────────────────────────── */
+    /* ── 20. Printable payslip ────────────────────────────────────── */
     await setCaption(page, "Opening the just-processed August payslip — printable");
     await page.getByRole("button", { name: /Payslip/ }).first().click();
     await page.getByText("Print / Save PDF").waitFor();
@@ -313,34 +351,41 @@ async function main() {
     await page.getByRole("button", { name: "Close", exact: true }).first().click();
     await sleep(900);
 
-    /* ── 15. Employee leave page ──────────────────────────────────── */
+    /* ── 21. Employee leave page ──────────────────────────────────── */
     await navLink(page, "My Leave").click();
     await page.getByRole("heading", { name: "Leave Management", level: 1 }).waitFor();
     await page.getByText("Leave Balances").waitFor();
     await setCaption(page, "My Leave — this employee's requests and balances only");
     await sleep(4500);
 
-    /* ── 16. My Time: month log ───────────────────────────────────── */
+    /* ── 22. My Time: month log ───────────────────────────────────── */
     await navLink(page, "My Time").click();
     await page.getByRole("heading", { name: "My Time", level: 1 }).waitFor();
     await page.getByText("Total Hours").waitFor();
     await setCaption(page, "My Time — the month's recorded hours at a glance");
     await sleep(4000);
 
-    /* ── 17. My Time: clock in for today ──────────────────────────── */
+    /* ── 23. My Time: clock in for today ──────────────────────────── */
     await setCaption(page, "Clocking in for today — one click");
     await page.getByRole("button", { name: /Clock In/ }).click();
     await page.getByText(/Clocked in/).waitFor();
     await sleep(4000);
 
-    /* ── 18. My Reviews ───────────────────────────────────────────── */
+    /* ── 24. My Reviews ───────────────────────────────────────────── */
     await navLink(page, "My Reviews").click();
     await page.getByRole("heading", { name: "My Reviews", level: 1 }).waitFor();
     await page.getByText("Review by").first().waitFor();
     await setCaption(page, "My Reviews — Sam's shared mid-year review, rating, strengths, and goals");
     await sleep(6000);
 
-    /* ── 19. Wrap-up ──────────────────────────────────────────────── */
+    /* ── 25. My Goals ─────────────────────────────────────────────── */
+    await navLink(page, "My Goals").click();
+    await page.getByRole("heading", { name: "My Goals", level: 1 }).waitFor();
+    await page.locator("tr", { hasText: "Migrate the leave module" }).waitFor();
+    await setCaption(page, "My Goals — Sam's own objectives, including the one he completed");
+    await sleep(5000);
+
+    /* ── 26. Wrap-up ──────────────────────────────────────────────── */
     await navLink(page, "My Home").click();
     await setCaption(page, "Arella HR — people and payroll, for managers and employees");
     await sleep(5000);

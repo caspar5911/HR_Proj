@@ -14,6 +14,7 @@ import MyTimePage from "./my-time";
 import AttendancePage from "./attendance";
 import PerformancePage from "./performance";
 import MyReviewsPage from "./my-reviews";
+import GoalsPage from "./goals";
 
 /**
  * Route configuration for the application.
@@ -24,7 +25,7 @@ import MyReviewsPage from "./my-reviews";
  *   - admin+manager: dashboard, employees, org chart, payroll, attendance,
  *                    performance reviews
  *   - admin only:    audit log
- *   - everyone:      leave, my home, my time, my reviews
+ *   - everyone:      leave, my home, my time, my reviews, goals
  * Login is behind PublicOnlyRoute (redirects to the role's landing page when
  * already logged in).
  */
@@ -55,6 +56,7 @@ export const routes: RouteObject[] = [
           { path: "my-home", element: <MyHomePage /> },
           { path: "my-time", element: <MyTimePage /> },
           { path: "my-reviews", element: <MyReviewsPage /> },
+          { path: "goals", element: <GoalsPage /> },
         ],
       },
     ],

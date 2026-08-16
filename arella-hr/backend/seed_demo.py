@@ -23,6 +23,7 @@ from app.models.audit_log import AuditLog
 from app.models.deduction_rule import DeductionRule
 from app.models.department import Department
 from app.models.employee import Employee
+from app.models.goal import Goal
 from app.models.leave_balance import LeaveBalance
 from app.models.leave_request import LeaveRequest
 from app.models.leave_type import LeaveType
@@ -137,6 +138,33 @@ DEDUCTION_RULES = [
     ("Student Loan Repayment", "Voluntary student loan repayment plan", "fixed", 50.00, False),
 ]
 
+# (employee, title, description, period, progress, status, completed, creator)
+# creator: "admin" or "manager" — the demo account that recorded the goal.
+GOALS = [
+    ("Sam Okafor", "Migrate the leave module to the new API gateway",
+     "Move every leave endpoint behind the gateway and cut cold-start time below 300ms.",
+     "H2 2026", 65, "active", None, "admin"),
+    ("Sam Okafor", "Cut API p95 latency below 200ms",
+     "Profile the hot paths and cache the dashboard's heaviest queries.",
+     "H1 2026", 100, "completed",
+     datetime(2026, 7, 31, 16, 0, tzinfo=timezone.utc), "admin"),
+    ("Elena Petrova", "Launch the Q3 brand campaign",
+     "Coordinate the three-channel launch and hold CTR above the 2.1% baseline.",
+     "H2 2026", 40, "active", None, "admin"),
+    ("Aisha Bello", "Ship the content calendar automation",
+     "Remove manual scheduling so the team stops re-booking posts by hand.",
+     "H2 2026", 25, "active", None, "manager"),
+    ("Maya Chen", "Define the 2027 platform architecture with the exec team",
+     "Produce a target architecture and a migration plan the board can fund.",
+     "H2 2026", 10, "active", None, "admin"),
+    ("Liam Torres", "Finish the internal onboarding track",
+     "Complete the security and code-review modules.",
+     "H1 2026", 50, "archived", None, "admin"),
+    ("David Park", "Cut pipeline report prep time in half",
+     "Automate the weekly numbers pull from the CRM.",
+     "H2 2026", 55, "active", None, "admin"),
+]
+
 MOZILLA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
@@ -157,7 +185,7 @@ async def main() -> None:
                 "TRUNCATE TABLE payroll_entries, payroll_runs, leave_requests, "
                 "leave_balances, time_entries, employees, departments, "
                 "leave_types, deduction_rules, audit_logs, notifications, "
-                "review_cycles, reviews "
+                "review_cycles, reviews, goals "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -502,6 +530,28 @@ async def main() -> None:
         ))
         await db.commit()
 
+        # 8b. Goals (OKR board — scoped per role in the UI)
+        goal_objs: dict[str, Goal] = {}
+        for i, (emp_name, title, desc, period, progress, status, completed, creator) in enumerate(GOALS):
+            g = Goal(
+                employee_id=emps[emp_name].id,
+                title=title,
+                description=desc,
+                period=period,
+                progress=progress,
+                status=status,
+                completed_at=completed,
+                created_by_user_id=(
+                    emps["Elena Petrova"].user_id if creator == "manager" else admin.id
+                ),
+                created_at=datetime(2026, 7, 6, 9, 0, tzinfo=timezone.utc)
+                + timedelta(hours=i),
+                updated_at=datetime(2026, 8, 12, 10, 0, tzinfo=timezone.utc),
+            )
+            db.add(g)
+            goal_objs[title] = g
+        await db.flush()
+
         # 9. Audit trail (most recent first in the UI)
         rows = [
             ("login", "user", None, {"new": {"email": "admin@example.com"}},
@@ -515,6 +565,10 @@ async def main() -> None:
             ("leave_request.approved", "leave_request", None,
              {"old": {"status": "pending"}, "new": {"status": "approved"}},
              datetime(2026, 8, 14, 9, 42, tzinfo=timezone.utc)),
+            ("goal.updated", "goal",
+             goal_objs["Migrate the leave module to the new API gateway"].id,
+             {"old": {"progress": 50}, "new": {"progress": 65}},
+             datetime(2026, 8, 13, 10, 15, tzinfo=timezone.utc)),
             ("employee.created", "employee", None,
              {"new": {"name": "David Park", "position": "Sales Operations Analyst"}},
              datetime(2026, 8, 12, 11, 15, tzinfo=timezone.utc)),
@@ -537,7 +591,8 @@ async def main() -> None:
             f"balance sets, {len(LEAVE_REQUESTS)} leave requests, "
             f"{len(DEDUCTION_RULES)} deduction rules, {time_entries} time entries, "
             f"July run processed ({len(july_entries)} entries), August run draft, "
-            f"8 in-app notifications, 1 review cycle with 5 reviews."
+            f"8 in-app notifications, 1 review cycle with 5 reviews, "
+            f"{len(GOALS)} goals."
         )
         print(
             "[demo-seed] Login accounts: admin@example.com (password from "

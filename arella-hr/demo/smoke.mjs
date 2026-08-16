@@ -137,6 +137,17 @@ async function main() {
     await expectCount(page.locator("table tbody tr"), 5);
   });
 
+  await step("goals page shows the company OKR board", async () => {
+    await nav("Goals");
+    await page.getByRole("heading", { name: "Goals", level: 1 }).waitFor();
+    // Seeded: 7 goals across the company.
+    await expectCount(page.locator("table tbody tr"), 7);
+    await page
+      .getByText("Migrate the leave module to the new API gateway")
+      .first()
+      .waitFor();
+  });
+
   // ── Employee session ─────────────────────────────────────────────────────
   console.log("\n[smoke] employee session");
 
@@ -189,6 +200,26 @@ async function main() {
     await page.getByText("2026 Mid-Year Review").first().waitFor();
     await page.getByText("Review by").first().waitFor();
     await page.getByText("Shared", { exact: true }).first().waitFor();
+  });
+
+  await step("my-goals shows only the employee's own goals", async () => {
+    await nav("My Goals");
+    await page.getByRole("heading", { name: "My Goals", level: 1 }).waitFor();
+    // Seeded: Sam Okafor has two goals (one active, one completed).
+    await expectCount(page.locator("table tbody tr"), 2);
+    await page
+      .getByText("Migrate the leave module to the new API gateway")
+      .first()
+      .waitFor();
+    await page.getByText("Cut API p95 latency below 200ms").first().waitFor();
+  });
+
+  await step("company-wide Goals link hidden from employee", async () => {
+    const goalsLink = page
+      .locator("aside nav")
+      .getByText("Goals", { exact: true });
+    if (await goalsLink.count())
+      throw new Error("company Goals link visible to employee");
   });
 
   await step("attendance hidden from employee", async () => {
