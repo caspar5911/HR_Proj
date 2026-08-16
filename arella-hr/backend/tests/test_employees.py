@@ -272,7 +272,13 @@ async def test_delete_employee(client, db):
 
 
 async def _linked_user_is_active(db, user_id: int) -> bool:
-    result = await db.execute(select(User).where(User.id == user_id))
+    # The linked-account change is committed by the API's session, not this
+    # test session — which still holds the stale seeded User in its identity
+    # map. populate_existing forces a real round-trip so we read the value the
+    # API persisted, not the cached instance.
+    result = await db.execute(
+        select(User).where(User.id == user_id).execution_options(populate_existing=True)
+    )
     return bool(result.scalar_one().is_active)
 
 
